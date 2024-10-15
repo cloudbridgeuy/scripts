@@ -22,6 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -58,40 +59,20 @@ var semanticCmd = &cobra.Command{
 		}
 		branch = strings.TrimSpace(branch)
 
-		// var buf bytes.Buffer
-		//
-		// script.
-		// 	Exec("git diff --staged -- . ':(exclude)package-lock.json' ':(exclude)lazy-lock.json' ':(exclude)*.lock'").
-		// 	Exec(fmt.Sprintf("llm-stream --template git-semantic-commit --vars '{ \"branch\": \"%s\" }' --preset sonnet", branch)).
-		// 	Tee(&buf).
-		// 	Stdout()
+		var buf bytes.Buffer
+
+		script.
+			Exec("git diff --staged -- . ':(exclude)package-lock.json' ':(exclude)lazy-lock.json' ':(exclude)*.lock'").
+			Exec(fmt.Sprintf("llm-stream --template git-semantic-commit --vars '{ \"branch\": \"%s\" }' --preset sonnet", branch)).
+			Tee(&buf).
+			Stdout()
 
 		if noCommit {
 			return
 		}
 
-		buf := `<context>
-The changes made in this diff involve moving the regular expression declaration inside the 'Run' function of the 'authCmd' command. The regular expression 'var re = regexp.MustCompile("=.*")' was previously declared at the package level and has now been moved inside the function scope.
-</context>
-
-<thinking>
-Given the changes made, we can observe that:
-
-1. The modification is relatively small and doesn't introduce new functionality or fix a bug.
-2. The change is related to code organization and scope, moving a variable declaration from package level to function level.
-3. This type of change is best categorized as a refactor, as it improves code structure without changing its external behavior.
-4. The affected code is part of a command-line interface (CLI) tool, likely related to GitHub authentication, as evidenced by the 'gh' and 'auth' commands.
-
-Based on these observations, the most appropriate semantic commit type would be 'refactor'. The main service affected appears to be a GitHub-related CLI tool, which we can refer to as 'gh-cli' for the purpose of this commit message.
-</thinking>
-
-<output>
-refactor(gh-cli): move regex declaration to function scope
-</output>`
-
 		re := regexp.MustCompile(`(?s)<output>(.*?)</output>`)
-		// match := re.FindStringSubmatch(buf.String())
-		match := re.FindStringSubmatch(buf)
+		match := re.FindStringSubmatch(buf.String())
 		fmt.Println(match)
 		if len(match) < 2 || match[1] == "" {
 			errors.HandleErrorWithReason(fmt.Errorf("can't find the output"), "there's an issue when parsing the output")
