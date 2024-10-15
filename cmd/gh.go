@@ -40,8 +40,6 @@ var ghCmd = &cobra.Command{
 	Long:  "This commands aim to simplify common actions or alias more complex commands.",
 }
 
-var re = regexp.MustCompile("=.*")
-
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Authenticate a different GitHub account.",
@@ -49,6 +47,8 @@ var authCmd = &cobra.Command{
 variables found that begin with 'GITHUB_PAT'. Once selected, its
 value will be used to authenticate the 'gh' cli.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		var re = regexp.MustCompile("=.*")
+
 		env_key, err := script.Exec("env").Match("GITHUB_PAT").ReplaceRegexp(re, "").Exec("fzf").WithStderr(os.Stdout).String()
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't get profile from environment variables")
