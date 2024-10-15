@@ -43,7 +43,7 @@ var toSnakeCmd = &cobra.Command{
 	Short: "Changes a string to snake-case.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		s, err := utils.FirstOrStdin(args, cmd.InOrStdin())
+		s, err := utils.FirstOrStdin(args)
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't read input from stdin")
 		}
@@ -57,7 +57,7 @@ var toCamelCmd = &cobra.Command{
 	Short: "Changes a string to camelCase.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		s, err := utils.FirstOrStdin(args, cmd.InOrStdin())
+		s, err := utils.FirstOrStdin(args)
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't read input from stdin")
 		}
@@ -71,7 +71,7 @@ var toScreamingSnakeCmd = &cobra.Command{
 	Short: "Changes a string to SCREAMING_SNAKE.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		s, err := utils.FirstOrStdin(args, cmd.InOrStdin())
+		s, err := utils.FirstOrStdin(args)
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't read input from stdin")
 		}
@@ -85,7 +85,7 @@ var toKebabCmd = &cobra.Command{
 	Short: "Changes a string to kebab-case.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		s, err := utils.FirstOrStdin(args, cmd.InOrStdin())
+		s, err := utils.FirstOrStdin(args)
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't read input from stdin")
 		}
@@ -99,7 +99,7 @@ var toScreamingCamel = &cobra.Command{
 	Short: "Changes a string to ScreamingCamel.",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		s, err := utils.FirstOrStdin(args, cmd.InOrStdin())
+		s, err := utils.FirstOrStdin(args)
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't read input from stdin")
 		}
