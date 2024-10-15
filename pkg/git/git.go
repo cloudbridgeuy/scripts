@@ -21,6 +21,16 @@ func GetCurrentBranch() (string, error) {
 	return strings.TrimSpace(branch), nil
 }
 
+// HasStagedFiles checks if there are any staged files
+func HasStagedFiles() (bool, error) {
+	files, err := script.Exec("git diff --cached --name-only").String()
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(files) != "", nil
+}
+
 // CreateSemanticCommit creates a semantic commit message based on the git diff output
 func CreateSemanticCommit() (string, error) {
 	var buf bytes.Buffer
@@ -28,6 +38,14 @@ func CreateSemanticCommit() (string, error) {
 	branch, err := GetCurrentBranch()
 	if err != nil {
 		return "", err
+	}
+
+	hasStagedFiles, err := HasStagedFiles()
+	if err != nil {
+		return "", err
+	}
+	if !hasStagedFiles {
+		return "", fmt.Errorf("No staged files to commit on branch %s.\nStage your files or run this command\nwith --add or --all.", branch)
 	}
 
 	if _, err = script.

@@ -37,7 +37,7 @@ var gitCmd = &cobra.Command{
 
 var semanticCmd = &cobra.Command{
 	Use:   "semantic [OPTIONS]",
-	Short: "Create a semantic git commit from the git diff output",
+	Short: "Create a semantic git commit from the `git diff` output of the staged files",
 	Run: func(cmd *cobra.Command, args []string) {
 		noCommit, err := cmd.Flags().GetBool("no-commit")
 		if err != nil {
