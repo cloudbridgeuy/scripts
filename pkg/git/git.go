@@ -42,7 +42,6 @@ func CreateSemanticCommit() (string, error) {
 
 	re := regexp.MustCompile(`(?s)<output>(.*?)</output>`)
 	match := re.FindStringSubmatch(output)
-	fmt.Println(match)
 	if len(match) < 2 || match[1] == "" {
 		return "", fmt.Errorf("can't find the <output></output> tag on the llm result: %s", output)
 	}
