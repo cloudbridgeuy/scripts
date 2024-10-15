@@ -22,6 +22,8 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/cloudbridgeuy/scripts/pkg/errors"
@@ -43,6 +45,34 @@ var semanticCmd = &cobra.Command{
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't get the --no-commit flag")
 			return
+		}
+
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the --all flag")
+			return
+		}
+
+		add, err := cmd.Flags().GetBool("add")
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the --add flag")
+			return
+		}
+
+		fmt.Println("all", all)
+		fmt.Println("add", add)
+
+		if all == true {
+			if err := git.AddAll(); err != nil {
+				errors.HandleErrorWithReason(err, "can't stage all current changes")
+				return
+			}
+		} else if add == true {
+			fmt.Println("add")
+			if err := git.Add(); err != nil {
+				errors.HandleErrorWithReason(err, "can't stage all current changes")
+				return
+			}
 		}
 
 		commit, err := git.CreateSemanticCommit()
@@ -73,4 +103,6 @@ func init() {
 	gitCmd.AddCommand(semanticCmd)
 
 	semanticCmd.Flags().Bool("no-commit", false, "Don't run the git commit command automatically")
+	semanticCmd.Flags().Bool("all", false, "Stage all existing changes and create a new semanic commit based on them")
+	semanticCmd.Flags().Bool("add", false, "Opens a window to select the files to stage and then create a new semanic commit based on them")
 }

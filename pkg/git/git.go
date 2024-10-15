@@ -55,6 +55,31 @@ func Commit(commit string) error {
 	return err
 }
 
+// AddAll stages all changes.
+func AddAll() error {
+	_, err := script.Exec("git add -A").Stdout()
+	return err
+}
+
+// Add opens up an fzf window to select the files that need to be staged before the semantic commit is generated.
+func Add() error {
+	files, err := script.
+		Exec("git ls-files --modified").
+		Exec("fzf --preview 'git diff -- {}' --preview-window=right:60% --height=100% --border").
+		WithStderr(os.Stdout).
+		String()
+	if err != nil {
+		return err
+	}
+	files = strings.TrimSpace(files)
+	if files == "" {
+		return fmt.Errorf("No files selected")
+	}
+
+	_, err = script.Echo(files).Exec("xargs git add").Stdout()
+	return err
+}
+
 // CommitAmend amends the last commit
 func CommitAmend() error {
 	command := exec.Command("git", "commit", "--amend")
