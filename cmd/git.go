@@ -23,6 +23,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 
@@ -103,9 +105,13 @@ refactor(gh-cli): move regex declaration to function scope
 			return
 		}
 
-		_, err = script.Exec("git commit --amend").Stdout()
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't run `git commit amend`")
+		command := exec.Command("git", "commit", "--amend")
+		command.Stdout = os.Stdout
+		command.Stderr = os.Stderr
+		command.Stdin = os.Stdin
+
+		if err := command.Run(); err != nil {
+			errors.HandleErrorWithReason(err, "can't amend commit")
 			return
 		}
 	},
