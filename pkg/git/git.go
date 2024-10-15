@@ -65,7 +65,7 @@ func AddAll() error {
 func Add() error {
 	files, err := script.
 		Exec("git ls-files --modified").
-		Exec("fzf -m --preview 'git diff -- {}' --preview-window=right:60% --height=100% --border").
+		Exec("fzf -m --preview 'git diff -- {}' --preview-window=right:80% --height=100% --border").
 		WithStderr(os.Stdout).
 		String()
 	if err != nil {
