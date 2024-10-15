@@ -22,8 +22,6 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/cloudbridgeuy/scripts/pkg/errors"
@@ -59,16 +57,12 @@ var semanticCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Println("all", all)
-		fmt.Println("add", add)
-
-		if all == true {
+		if all {
 			if err := git.AddAll(); err != nil {
 				errors.HandleErrorWithReason(err, "can't stage all current changes")
 				return
 			}
-		} else if add == true {
-			fmt.Println("add")
+		} else if add {
 			if err := git.Add(); err != nil {
 				errors.HandleErrorWithReason(err, "can't stage all current changes")
 				return
