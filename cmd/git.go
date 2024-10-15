@@ -22,17 +22,10 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"bytes"
-	"fmt"
-	"os"
-	"os/exec"
-	"regexp"
-	"strings"
-
 	"github.com/spf13/cobra"
 
-	"github.com/bitfield/script"
 	"github.com/cloudbridgeuy/scripts/pkg/errors"
+	"github.com/cloudbridgeuy/scripts/pkg/git"
 )
 
 // gitCmd represents the case command
@@ -52,47 +45,23 @@ var semanticCmd = &cobra.Command{
 			return
 		}
 
-		branch, err := script.Exec("git branch --show-current").String()
+		commit, err := git.CreateSemanticCommit()
 		if err != nil {
-			errors.HandleErrorWithReason(err, "can't get the current branch")
+			errors.HandleErrorWithReason(err, "can't create a semantic commit")
 			return
 		}
-		branch = strings.TrimSpace(branch)
-
-		var buf bytes.Buffer
-
-		script.
-			Exec("git diff --staged -- . ':(exclude)package-lock.json' ':(exclude)lazy-lock.json' ':(exclude)*.lock'").
-			Exec(fmt.Sprintf("llm-stream --template git-semantic-commit --vars '{ \"branch\": \"%s\" }' --preset sonnet", branch)).
-			Tee(&buf).
-			Stdout()
 
 		if noCommit {
 			return
 		}
 
-		re := regexp.MustCompile(`(?s)<output>(.*?)</output>`)
-		match := re.FindStringSubmatch(buf.String())
-		fmt.Println(match)
-		if len(match) < 2 || match[1] == "" {
-			errors.HandleErrorWithReason(fmt.Errorf("can't find the output"), "there's an issue when parsing the output")
-			return
-		}
-		output := strings.TrimSpace(match[1])
-
-		_, err = script.Echo(output).Exec("git commit -F -").Stdout()
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't commit output")
+		if err := git.Commit(commit); err != nil {
+			errors.HandleErrorWithReason(err, "can't create the git commit")
 			return
 		}
 
-		command := exec.Command("git", "commit", "--amend")
-		command.Stdout = os.Stdout
-		command.Stderr = os.Stderr
-		command.Stdin = os.Stdin
-
-		if err := command.Run(); err != nil {
-			errors.HandleErrorWithReason(err, "can't amend commit")
+		if err := git.CommitAmend(); err != nil {
+			errors.HandleErrorWithReason(err, "can't amend the commit")
 			return
 		}
 	},
