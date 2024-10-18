@@ -28,7 +28,7 @@ import (
 	"github.com/cloudbridgeuy/scripts/pkg/git"
 )
 
-// gitCmd represents the case command
+// gitCmd represents the git command
 var gitCmd = &cobra.Command{
 	Use:   "git COMMAND [OPTIONS]",
 	Short: "Wrapper around the `git` cli",

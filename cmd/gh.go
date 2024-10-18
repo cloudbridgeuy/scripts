@@ -33,7 +33,7 @@ import (
 	"github.com/cloudbridgeuy/scripts/pkg/errors"
 )
 
-// ghCmd represents the case command
+// ghCmd represents the gh command
 var ghCmd = &cobra.Command{
 	Use:   "gh COMMAND [OPTIONS]",
 	Short: "Wrapper around the `gh` cli",

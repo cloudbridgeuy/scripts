@@ -25,11 +25,25 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/cloudbridgeuy/scripts/pkg/errors"
+	"github.com/cloudbridgeuy/scripts/pkg/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v2"
 )
 
+type Config struct {
+	Tmux struct {
+		Sessions struct {
+			History []string
+			Current string
+		}
+	}
+}
+
+var config Config
 var cfgFile string
+var verbose bool
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -59,6 +73,7 @@ func init() {
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default is $HOME/.scripts.yaml)")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Increase the verbosity level")
 }
 
 func initConfig() {
@@ -77,5 +92,22 @@ func initConfig() {
 
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+	}
+
+	// Read the `viper.ConfigFileUsed()` file
+	file, err := os.ReadFile(viper.ConfigFileUsed())
+	if err != nil {
+		errors.HandleErrorWithReason(err, "can't open config file: "+viper.ConfigFileUsed())
+		return
+	}
+
+	// Unmarshal `file` from `yaml`.
+	if err := yaml.Unmarshal(file, &config); err != nil {
+		errors.HandleErrorWithReason(err, "can't unmarshall config at "+viper.ConfigFileUsed())
+		os.Exit(1)
+	}
+
+	if verbose {
+		logger.Verbose()
 	}
 }
