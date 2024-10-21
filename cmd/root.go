@@ -80,7 +80,10 @@ func initConfig() {
 		viper.SetConfigFile(cfgFile)
 	} else {
 		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the user's home directory")
+			os.Exit(1)
+		}
 
 		viper.AddConfigPath(home)
 		viper.SetConfigType("yaml")
