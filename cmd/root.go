@@ -36,7 +36,6 @@ type Config struct {
 	Tmux struct {
 		Sessions struct {
 			History []string
-			Current string
 		}
 	}
 }

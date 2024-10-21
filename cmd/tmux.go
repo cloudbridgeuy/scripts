@@ -38,7 +38,7 @@ import (
 // tmuxCmd represents the tmux command
 var tmuxCmd = &cobra.Command{
 	Use:   "tmux COMMAND [OPTIONS]",
-	Short: "Wrapper around the `tmux` cli",
+	Short: "Wrapper around the `tmux` cli.",
 	Long:  "This commands aim to simplify common actions or alias more complex commands.",
 }
 
@@ -51,7 +51,7 @@ type directory struct {
 
 var newCmd = &cobra.Command{
 	Use:   "new [OPTIONS]",
-	Short: "Create a new session from a subset of all the system directories",
+	Short: "Create a new session from a subset of all the system directories.",
 	Long: `The goal of this command is to create a new Tmux session named after the
 working directory assigned to it. This way, we can ensure not to duplicate
 session names when creating them, and can use them to jump between
@@ -158,9 +158,124 @@ var displayCmd = &cobra.Command{
 	},
 }
 
+var historyCmd = &cobra.Command{
+	Use:   "history",
+	Short: "See the session history.",
+	Long: `Every movement through tmux session done through this tool will be
+stored inside the 'tmux.sessions.history' list. This command only
+lists the lines stored on that field.
+
+NOTE: The session history usually doesn't match with Tmux.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		for i, s := range config.Tmux.Sessions.History {
+			fmt.Printf("%d\t\t%s\n", i, s)
+		}
+	},
+}
+
+var prevCmd = &cobra.Command{
+	Use:   "prev",
+	Short: "Go to the previous open session.",
+	Long: `We keep a list of all the visited sessions in order of usage. You can
+use this command plus the 'next' command to move between them.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		historyLength := len(config.Tmux.Sessions.History)
+
+		if historyLength == 0 {
+			errors.HandleError(fmt.Errorf("No sessions found in history"))
+			return
+		}
+
+		newHistory := make([]string, historyLength)
+
+		for i, s := range config.Tmux.Sessions.History {
+			if i == historyLength-1 {
+				newHistory[0] = s
+			} else {
+				newHistory[i+1] = s
+			}
+		}
+
+		session := newHistory[historyLength-1]
+
+		config.Tmux.Sessions.History = newHistory
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the user home directory")
+		}
+
+		c, err := yaml.Marshal(config)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't marshal the config file")
+		}
+
+		err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't write back the config file")
+		}
+
+		err = tmux.Switch(session)
+		if err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
+	},
+}
+
+var nextCmd = &cobra.Command{
+	Use:   "next",
+	Short: "Go to the next open session.",
+	Long: `We keep a list of all the visited sessions in order of usage. You can
+use this command plus the 'prev' command to move between them.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		historyLength := len(config.Tmux.Sessions.History)
+
+		if historyLength == 0 {
+			errors.HandleError(fmt.Errorf("No sessions found in history"))
+			return
+		}
+
+		newHistory := make([]string, historyLength)
+
+		for i, s := range config.Tmux.Sessions.History {
+			if i == 0 {
+				newHistory[historyLength-1] = s
+			} else {
+				newHistory[i-1] = s
+			}
+		}
+
+		session := newHistory[historyLength-1]
+
+		config.Tmux.Sessions.History = newHistory
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the user home directory")
+		}
+
+		c, err := yaml.Marshal(config)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't marshal the config file")
+		}
+
+		err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't write back the config file")
+		}
+
+		err = tmux.Switch(session)
+		if err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
+	},
+}
+
 var goCmd = &cobra.Command{
 	Use:   "go [SESSION]",
-	Short: "Go to the provided session or pick one from those available",
+	Short: "Go to the provided session or pick one from those available.",
 	Long: `You can either provide a full path to open a new session or leave the
 SESSION argument empty to display the list of running sessions to pick one.`,
 	Args: cobra.MaximumNArgs(1),
@@ -183,14 +298,7 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 			}
 		}
 
-		err = tmux.Switch(session)
-		if err != nil {
-			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
-			return
-		}
-
 		logger.Debugf("Updating config file with session: %s", session)
-		config.Tmux.Sessions.Current = session
 		var sessions []string
 
 		for _, s := range config.Tmux.Sessions.History {
@@ -203,7 +311,6 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 		sessions = append(sessions, session)
 
 		config.Tmux.Sessions.History = sessions
-		config.Tmux.Sessions.Current = session
 
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -219,6 +326,12 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't write back the config file")
 		}
+
+		err = tmux.Switch(session)
+		if err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
 	},
 }
 
@@ -228,6 +341,9 @@ func init() {
 	tmuxCmd.AddCommand(displayCmd)
 	tmuxCmd.AddCommand(newCmd)
 	tmuxCmd.AddCommand(goCmd)
+	tmuxCmd.AddCommand(nextCmd)
+	tmuxCmd.AddCommand(prevCmd)
+	tmuxCmd.AddCommand(historyCmd)
 
 	displayCmd.Flags().Bool("no-switch", false, "Don't run the git commit command automatically")
 }
