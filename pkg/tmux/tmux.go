@@ -110,6 +110,14 @@ func NewSession(name string) error {
 	return script.Exec(fmt.Sprintf("tmux new-session -s %s -c %s -d", strings.Replace(name, ".", "·", -1), name)).Wait()
 }
 
+// KillSessions kills a session.
+func KillSession(name string) error {
+	if err := HasSession(name); err == nil {
+		return script.Exec(fmt.Sprintf("tmux kill-session -t %s", name)).Wait()
+	}
+	return nil
+}
+
 // HasSession checks if the given session exists.
 func HasSession(name string) error {
 	logger.Debugf("Checking if session %s exists", name)
@@ -129,4 +137,24 @@ func DisplaySessions() (string, error) {
 		String()
 
 	return strings.TrimSpace(buf), err
+}
+
+// Ls returns a list of `tmux` running sessions.
+func Ls() ([]string, error) {
+	result, err := script.
+		Exec("tmux ls -F'#{session_name}'").
+		String()
+	if err != nil {
+		return nil, err
+	}
+
+	var sessions []string
+	for _, session := range strings.Split(result, "\n") {
+		if session == "" {
+			continue
+		}
+		sessions = append(sessions, strings.TrimSpace(session))
+	}
+
+	return sessions, nil
 }

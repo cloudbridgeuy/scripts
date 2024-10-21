@@ -158,6 +158,74 @@ var displayCmd = &cobra.Command{
 	},
 }
 
+var syncCmd = &cobra.Command{
+	Use:   "sync",
+	Short: "Sync session to and from tmux.",
+	Long: `Use this command whenever the sessions running in 'tmux' differs from
+the one tracked by the tool's history. You can choose to sync in any
+direction through the '--reverse' option. The default is to sync from
+tmux to this tool, but if you include the '--reverse' option, then
+sessions will be opened and closed from 'tmux' until both lists match.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		reverse, err := cmd.Flags().GetBool("reverse")
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the --reverse flag")
+			return
+		}
+
+		sessions, err := tmux.Ls()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't list tmux sessions")
+			return
+		}
+
+		inHistory := make(map[string]bool)
+		inTmux := make(map[string]bool)
+
+		for _, session := range config.Tmux.Sessions.History {
+			inHistory[session] = true
+		}
+
+		for _, session := range sessions {
+			inTmux[session] = true
+		}
+
+		if reverse {
+			for _, session := range append(sessions, config.Tmux.Sessions.History...) {
+				if inHistory[session] {
+					if inTmux[session] {
+						continue
+					} else {
+						if err := tmux.NewSession(session); err != nil {
+							errors.HandleErrorWithReason(err, fmt.Sprintf("can't create session %s", session))
+							return
+						}
+					}
+				} else {
+					if err := tmux.KillSession(session); err != nil {
+						errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
+						return
+					}
+				}
+			}
+		} else {
+			config.Tmux.Sessions.History = sessions
+
+			if err := saveConfig(); err != nil {
+				errors.HandleErrorWithReason(err, "can't save the config file")
+				return
+			}
+		}
+
+		session := sessions[len(sessions)-1]
+		err = tmux.Switch(session)
+		if err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
+	},
+}
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "See list of active sessions.",
@@ -218,22 +286,12 @@ use this command plus the 'next' command to move between them.`,
 
 		config.Tmux.Sessions.History = sessions
 
-		home, err := os.UserHomeDir()
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't get the user home directory")
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
 		}
 
-		c, err := yaml.Marshal(config)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't marshal the config file")
-		}
-
-		err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't write back the config file")
-		}
-
-		err = tmux.Switch(session)
+		err := tmux.Switch(session)
 		if err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
@@ -268,22 +326,12 @@ use this command plus the 'prev' command to move between them.`,
 
 		config.Tmux.Sessions.History = sessions
 
-		home, err := os.UserHomeDir()
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't get the user home directory")
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
 		}
 
-		c, err := yaml.Marshal(config)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't marshal the config file")
-		}
-
-		err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't write back the config file")
-		}
-
-		err = tmux.Switch(session)
+		err := tmux.Switch(session)
 		if err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
@@ -303,22 +351,12 @@ var addCmd = &cobra.Command{
 
 		config.Tmux.Sessions.History = sessions
 
-		home, err := os.UserHomeDir()
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't get the user home directory")
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
 		}
 
-		c, err := yaml.Marshal(config)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't marshal the config file")
-		}
-
-		err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't write back the config file")
-		}
-
-		err = tmux.Switch(session)
+		err := tmux.Switch(session)
 		if err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
@@ -337,7 +375,7 @@ var removeCmd = &cobra.Command{
 		var sessions []string
 		for _, s := range config.Tmux.Sessions.History {
 			if s == session {
-				if _, err := script.Exec(fmt.Sprintf("tmux kill-session -t %s", session)).Stdout(); err != nil {
+				if err := tmux.KillSession(session); err != nil {
 					errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
 					return
 				}
@@ -349,19 +387,9 @@ var removeCmd = &cobra.Command{
 
 		config.Tmux.Sessions.History = sessions
 
-		home, err := os.UserHomeDir()
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't get the user home directory")
-		}
-
-		c, err := yaml.Marshal(config)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't marshal the config file")
-		}
-
-		err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't write back the config file")
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
 		}
 	},
 }
@@ -400,19 +428,9 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 
 		config.Tmux.Sessions.History = sessions
 
-		home, err := os.UserHomeDir()
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't get the user home directory")
-		}
-
-		c, err := yaml.Marshal(config)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't marshal the config file")
-		}
-
-		err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
-		if err != nil {
-			errors.HandleErrorWithReason(err, "can't write back the config file")
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
 		}
 
 		err = tmux.Switch(session)
@@ -434,6 +452,28 @@ func init() {
 	tmuxCmd.AddCommand(listCmd)
 	tmuxCmd.AddCommand(addCmd)
 	tmuxCmd.AddCommand(removeCmd)
+	tmuxCmd.AddCommand(syncCmd)
 
 	displayCmd.Flags().Bool("no-switch", false, "Don't run the git commit command automatically")
+
+	syncCmd.Flags().Bool("reverse", false, "Sync from 'tmux' to the history")
+}
+
+func saveConfig() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return errors.NewReasonError(err, "can't get the user home directory")
+	}
+
+	c, err := yaml.Marshal(config)
+	if err != nil {
+		errors.NewReasonError(err, "can't marshal the config file")
+	}
+
+	err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
+	if err != nil {
+		errors.NewReasonError(err, "can't write back the config file")
+	}
+
+	return nil
 }
