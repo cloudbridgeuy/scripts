@@ -82,7 +82,7 @@ func ListSessions() ([]string, error) {
 // The value of `name` is supposed to be a directory path.
 func Switch(name string) error {
 	if err := HasSession(name); err != nil {
-		return NewSession(name)
+		NewSession(name)
 	}
 
 	if err := Attach(name); err != nil {

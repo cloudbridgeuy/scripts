@@ -24,6 +24,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	// "path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -66,13 +68,13 @@ projects, keeping all the required configuration namespaced inside.`,
 				path:     home,
 				mindepth: 1,
 				maxdepth: 1,
-				grep:     "*",
+				grep:     ".*",
 			},
 			{
 				path:     home + "/Projects",
 				mindepth: 3,
 				maxdepth: 4,
-				grep:     ".*/Projects/[^/]*/[^/]*/branches/",
+				grep:     ".*/Projects/[^/]*/[^/]*/branches/[^/]*",
 			},
 			{
 				path:     home + "/Projects",
@@ -84,7 +86,7 @@ projects, keeping all the required configuration namespaced inside.`,
 				path:     home + "/Projects",
 				mindepth: 1,
 				maxdepth: 1,
-				grep:     "*",
+				grep:     ".*",
 			},
 		}
 
@@ -100,15 +102,22 @@ projects, keeping all the required configuration namespaced inside.`,
 			go func(dir directory) {
 				defer wg.Done()
 
-				logger.Debugf("find %s -mindepth %d -maxdepth %d -name '%s'", dir.path, dir.mindepth, dir.maxdepth, dir.grep)
-				output, err := script.Exec(fmt.Sprintf("find %s -mindepth %d -maxdepth %d -name '%s'", dir.path, dir.mindepth, dir.maxdepth, dir.grep)).String()
+				logger.Debugf("/usr/bin/find %s -mindepth %d -maxdepth %d -type d", dir.path, dir.mindepth, dir.maxdepth)
+				regex := regexp.MustCompile(dir.grep)
+				output, err := script.
+					Exec(fmt.Sprintf("/usr/bin/find %s -mindepth %d -maxdepth %d -type d", dir.path, dir.mindepth, dir.maxdepth)).
+					MatchRegexp(regex).
+					String()
 				if err != nil {
+					logger.Errorf("find %s -mindepth %d -maxdepth %d -type d", dir.path, dir.mindepth, dir.maxdepth)
+					logger.Errorf(err.Error())
 					errChan <- err
 					return
 				}
 
 				mu.Lock()
 				allOutput = allOutput + "\n" + strings.TrimSpace(output)
+				// allOutput = allOutput + "\n" + strings.Join(dirs, "\n")
 				mu.Unlock()
 			}(dir)
 		}
@@ -125,7 +134,34 @@ projects, keeping all the required configuration namespaced inside.`,
 			}
 		}
 
-		script.Echo(strings.TrimSpace(allOutput)).Exec("sort -u").Exec("fzf").WithStderr(os.Stdout).Stdout()
+		session, err := script.
+			Echo(strings.TrimSpace(allOutput)).
+			Exec("sort -ur").
+			Exec(`fzf \
+        --header 'Select the directory where you want your session to be created.' \
+        --preview "exa -lha --icons --group-directories-first --git --no-user --color=always {}" \
+        --preview-window="right:40%" \
+        --height="100%"`).
+			WithStderr(os.Stdout).
+			String()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the selected session")
+			return
+		}
+
+		session = strings.TrimSpace(session)
+
+		config.Tmux.Sessions.History = append(config.Tmux.Sessions.History, session)
+
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
+		}
+
+		if err = tmux.Switch(session); err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
 	},
 }
 
@@ -150,8 +186,7 @@ var displayCmd = &cobra.Command{
 			return
 		}
 
-		err = tmux.Switch(session)
-		if err != nil {
+		if err = tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
@@ -218,8 +253,7 @@ sessions will be opened and closed from 'tmux' until both lists match.`,
 		}
 
 		session := sessions[len(sessions)-1]
-		err = tmux.Switch(session)
-		if err != nil {
+		if err = tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
@@ -291,8 +325,7 @@ use this command plus the 'next' command to move between them.`,
 			return
 		}
 
-		err := tmux.Switch(session)
-		if err != nil {
+		if err := tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
@@ -331,8 +364,7 @@ use this command plus the 'prev' command to move between them.`,
 			return
 		}
 
-		err := tmux.Switch(session)
-		if err != nil {
+		if err := tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
@@ -433,8 +465,7 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 			return
 		}
 
-		err = tmux.Switch(session)
-		if err != nil {
+		if err := tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
