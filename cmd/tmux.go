@@ -24,7 +24,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	// "path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -139,7 +138,7 @@ projects, keeping all the required configuration namespaced inside.`,
 			Exec("sort -ur").
 			Exec(`fzf \
         --header 'Select the directory where you want your session to be created.' \
-        --preview "exa -lha --icons --group-directories-first --git --no-user --color=always {}" \
+        --preview "eza -lha --icons --group-directories-first --git --no-user --color=always {}" \
         --preview-window="right:40%" \
         --height="100%"`).
 			WithStderr(os.Stdout).
@@ -151,7 +150,18 @@ projects, keeping all the required configuration namespaced inside.`,
 
 		session = strings.TrimSpace(session)
 
-		config.Tmux.Sessions.History = append(config.Tmux.Sessions.History, session)
+		var sessions []string
+
+		for _, s := range config.Tmux.Sessions.History {
+			if s == session || s == "" {
+				continue
+			}
+			sessions = append(sessions, s)
+		}
+
+		sessions = append(sessions, session)
+
+		config.Tmux.Sessions.History = sessions
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")

@@ -10,6 +10,7 @@ var Logger *log.Logger
 
 func init() {
 	Logger = log.New(os.Stderr)
+	Logger.SetLevel(log.WarnLevel)
 }
 
 // Verbose enables verbose mode for the logger

@@ -3,6 +3,7 @@ package tmux
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/bitfield/script"
@@ -63,12 +64,16 @@ func (s *session) Display() error {
 		return fmt.Errorf("can't find `id` for session %s", s.name)
 	}
 
+	logger.Infof("Displaying session %s", s.name)
+	logger.Debugf("tmux -L %s capture-pane -ep -t %s", s.server, s.id)
 	_, err := script.Exec(fmt.Sprintf("tmux -L %s capture-pane -ep -t %s", s.server, s.id)).Stdout()
 	return err
 }
 
 // ListSessions returns a list of all the running Tmux sessions
 func ListSessions() ([]string, error) {
+	logger.Infof("Listing all tmux sessions")
+	logger.Debugf("tmux ls -F'#{session_name}'")
 	text, err := script.Exec("tmux ls -F'#{session_name}'").String()
 	if err != nil {
 		return nil, err
@@ -94,25 +99,40 @@ func Switch(name string) error {
 
 // SwitchClient switches the client to the given session.
 func SwitchClient(name string) error {
-	logger.Debugf("Switching to session %s", name)
+	logger.Infof("Switching to session %s", name)
+	logger.Debugf("tmux switch-client -t %s", name)
 	return script.Exec(fmt.Sprintf("tmux switch-client -t %s", name)).Wait()
 }
 
 // Attach attaches the current tmux instance to the given session.
+//
+// NOTE:
+// We can't use the `scripts` package because (for some unknown reason to me)
+// tmux` requires that we bind `stdout`, `stderr`, and `stdin` to the spawned
+// process for it to work.
 func Attach(name string) error {
-	logger.Debugf("Attaching to session %s", name)
-	return script.Exec(fmt.Sprintf("tmux attach -t '=%s'", name)).Wait()
+	logger.Infof("Attaching to session %s", name)
+	logger.Debugf("tmux attach -t %s", name)
+	cmd := exec.Command("tmux", "attach", "-d", "-t", fmt.Sprintf("=%s", name))
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Start()
+	return cmd.Wait()
 }
 
 // NewSession creates a new tmux session.
 func NewSession(name string) error {
-	logger.Debugf("Creating new session %s", name)
+	logger.Infof("Creating new session %s", name)
+	logger.Debugf("tmux new-session -s %s -c %s -d", strings.Replace(name, ".", "·", -1), name)
 	return script.Exec(fmt.Sprintf("tmux new-session -s %s -c %s -d", strings.Replace(name, ".", "·", -1), name)).Wait()
 }
 
 // KillSessions kills a session.
 func KillSession(name string) error {
+	logger.Infof("Killing session %s", name)
 	if err := HasSession(name); err == nil {
+		logger.Debugf("tmux kill-session -t %s", name)
 		return script.Exec(fmt.Sprintf("tmux kill-session -t %s", name)).Wait()
 	}
 	return nil
@@ -120,8 +140,9 @@ func KillSession(name string) error {
 
 // HasSession checks if the given session exists.
 func HasSession(name string) error {
-	logger.Debugf("Checking if session %s exists", name)
-	return script.Exec(fmt.Sprintf("tmux has-session -t '=%s'", name)).Wait()
+	logger.Infof("Checking if session %s exists", name)
+	logger.Debugf("tmux has-session -t %s", name)
+	return script.Exec(fmt.Sprintf("tmux has-session -t %s", name)).Wait()
 }
 
 // DisplaySessions dynamically renders all the current active sessions and allows you to traverse to them.
