@@ -82,8 +82,8 @@ func AddAll() error {
 // Add opens up an fzf window to select the files that need to be staged before the semantic commit is generated.
 func Add() error {
 	files, err := script.
-		Exec("git ls-files --modified").
-		Exec("fzf -m --preview 'git diff -- {}' --preview-window=right:70% --height=100% --border").
+		Exec("git ls-files --modified --others").
+		Exec("fzf -m --preview 'git diff --color -- {}' --preview-window=right:70% --height=100% --border").
 		WithStderr(os.Stdout).
 		String()
 	if err != nil {
