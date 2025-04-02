@@ -7,18 +7,19 @@ require (
 	github.com/charmbracelet/lipgloss v0.13.0
 	github.com/charmbracelet/log v0.4.0
 	github.com/cloudbridgeuy/puper v0.0.0-20240822160854-9a61f6b4024b
+	github.com/fatih/color v1.18.0
 	github.com/iancoleman/strcase v0.3.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/muesli/termenv v0.15.2
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
+	golang.org/x/term v0.8.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/x/ansi v0.1.4 // indirect
-	github.com/fatih/color v1.18.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

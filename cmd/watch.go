@@ -37,9 +37,10 @@ import (
 )
 
 var watchCmd = &cobra.Command{
-	Use:                "watch [COMMAND...]",
-	Short:              "Watch a command",
-	DisableFlagParsing: true,
+	Use:                   "watch [flags] -- <COMMAND...>",
+	DisableFlagsInUseLine: true,
+	Short:                 "Watch a command",
+	DisableFlagParsing:    true,
 	Long: `The list of accounts will be constructed based on all environment
 variables found that begin with 'GITHUB_PAT'. Once selected, its
 value will be used to authenticate the 'gh' cli.`,
@@ -56,14 +57,24 @@ value will be used to authenticate the 'gh' cli.`,
 			options[i] = arg
 		}
 
-		if len(command) == 0 {
-			err := fmt.Errorf("no command provided")
-			errors.HandleErrorWithReason(err, "Error")
-			os.Exit(1)
-		}
+		cmd.DisableFlagParsing = false
 
 		if err := cmd.ParseFlags(options); err != nil {
 			errors.HandleErrorWithReason(err, "Can't parse watch command arguments")
+			cmd.Help()
+			fmt.Println()
+			os.Exit(1)
+		}
+
+		if cmd.Flag("help").Value.String() == "true" {
+			cmd.Help()
+			fmt.Println()
+			os.Exit(0)
+		}
+
+		if len(command) == 0 {
+			err := fmt.Errorf("No command provided.")
+			errors.HandleErrorWithReason(err, "Error")
 			os.Exit(1)
 		}
 
@@ -73,18 +84,27 @@ value will be used to authenticate the 'gh' cli.`,
 			os.Exit(1)
 		}
 
+		columns, err := cmd.Flags().GetInt("columns")
+		if err != nil {
+			errors.HandleErrorWithReason(err, "Can't get the --columns flag")
+			os.Exit(1)
+		}
+
+		fmt.Print(columns)
+
 		term.Clear()
+
+		envVars := os.Environ()
+		envVars = append(envVars, fmt.Sprintf("COLUMNS=%d", columns))
 
 		go func() {
 			var err error
 			var curr, next string
-			curr, err = script.Exec(strings.Join(command, " ")).String()
+			curr, err = script.Exec(strings.Join(command, " ")).WithEnv(envVars).String()
 			if err != nil {
 				errors.HandleErrorWithReason(err, "Can't execute command")
 				os.Exit(1)
 			}
-
-			fmt.Printf(curr)
 
 			yellow := color.New(color.FgYellow).SprintFunc()
 			green := color.New(color.FgGreen).SprintFunc()
@@ -93,7 +113,7 @@ value will be used to authenticate the 'gh' cli.`,
 				// Wait for `interval` amount of seconds.
 				time.Sleep(time.Duration(interval) * time.Second)
 
-				next, err = script.Exec(strings.Join(command, " ")).String()
+				next, err = script.Exec(strings.Join(command, " ")).WithEnv(envVars).String()
 				if err != nil {
 					errors.HandleErrorWithReason(err, "Can't execute command")
 					os.Exit(1)
@@ -115,7 +135,6 @@ value will be used to authenticate the 'gh' cli.`,
 						fmt.Print(string(nextRunes[i]))
 					}
 				}
-				fmt.Println()
 				curr = next
 			}
 		}()
@@ -130,5 +149,11 @@ value will be used to authenticate the 'gh' cli.`,
 func init() {
 	rootCmd.AddCommand(watchCmd)
 
+	columns, err := term.GetColumns()
+	if err != nil {
+		columns = 200
+	}
+
 	watchCmd.Flags().IntP("interval", "i", 1, "Interval in seconds to run the command")
+	watchCmd.Flags().IntP("columns", "c", columns, "Number of columns to use")
 }
