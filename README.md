@@ -23,7 +23,7 @@ Scripts is a powerful Go-based CLI tool that provides a collection of useful scr
 
 ### Pre-built Binary
 
-Download the latest binaries from the `Release` page.
+Download the latest binaries from the [`Release`](https://github.com/cloudbridgeuy/scripts/releases) page.
 
 ### Building from Source
 
