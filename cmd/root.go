@@ -32,6 +32,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Create a channel to listen for OS signals.
+var signalChan chan (os.Signal) = make(chan os.Signal, 1)
+
 type Config struct {
 	Tmux struct {
 		Sessions struct {
