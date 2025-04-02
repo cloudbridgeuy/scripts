@@ -84,7 +84,7 @@ value will be used to authenticate the 'gh' cli.`,
 				os.Exit(1)
 			}
 
-			fmt.Println(curr)
+			fmt.Printf(curr)
 
 			yellow := color.New(color.FgYellow).SprintFunc()
 			green := color.New(color.FgGreen).SprintFunc()
@@ -99,18 +99,20 @@ value will be used to authenticate the 'gh' cli.`,
 					os.Exit(1)
 				}
 
-				term.Clear()
+				term.CenterCursor()
 
 				// Iterate over each character of `next` and compare it to prev.
 				// If they are different, print the character in yellow.
 				// If they are the same, print the character in white.
-				for i := 0; i < len(next); i++ {
-					if i >= len(curr) {
-						fmt.Print(green(string(next[i])))
-					} else if curr[i] != next[i] {
-						fmt.Print(yellow(string(next[i])))
+				nextRunes := []rune(next)
+				currRunes := []rune(curr)
+				for i := 0; i < len(nextRunes); i++ {
+					if i >= len(currRunes) {
+						fmt.Print(green(string(nextRunes[i])))
+					} else if currRunes[i] != nextRunes[i] {
+						fmt.Print(yellow(string(nextRunes[i])))
 					} else {
-						fmt.Print(string(next[i]))
+						fmt.Print(string(nextRunes[i]))
 					}
 				}
 				fmt.Println()
