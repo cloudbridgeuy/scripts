@@ -38,6 +38,8 @@ func HandleError(err error) {
 	}
 
 	logger.Logger.Printf(format, args...)
+
+	os.Exit(1)
 }
 
 // ReasonError is a wrapper around an error that adds additional context.
