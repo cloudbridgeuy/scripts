@@ -22,28 +22,58 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/cloudbridgeuy/scripts/pkg/errors"
 	"github.com/cloudbridgeuy/scripts/pkg/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v2"
 )
 
 // Create a channel to listen for OS signals.
 var signalChan chan (os.Signal) = make(chan os.Signal, 1)
 
-type Config struct {
-	Tmux struct {
-		Sessions struct {
-			History []string
-		}
-	}
+// Config helper functions using viper as single source of truth
+func getTmuxHistory() []string {
+	return viper.GetStringSlice("tmux.sessions.history")
 }
 
-var config Config
+func setTmuxHistory(sessions []string) {
+	viper.Set("tmux.sessions.history", sessions)
+}
+
+func addToTmuxHistory(session string) {
+	history := getTmuxHistory()
+	// Remove duplicates and add to end
+	var newHistory []string
+	for _, s := range history {
+		if s != session && s != "" {
+			newHistory = append(newHistory, s)
+		}
+	}
+	newHistory = append(newHistory, session)
+	setTmuxHistory(newHistory)
+}
+
+func removeFromTmuxHistory(session string) {
+	history := getTmuxHistory()
+	var newHistory []string
+	for _, s := range history {
+		if s != session {
+			newHistory = append(newHistory, s)
+		}
+	}
+	setTmuxHistory(newHistory)
+}
+
+func saveConfig() error {
+	return viper.WriteConfig()
+}
+
+func reloadConfig() error {
+	return viper.ReadInConfig()
+}
+
 var cfgFile string
 var verbose bool
 
@@ -93,23 +123,15 @@ func initConfig() {
 		viper.SetConfigName(".scripts")
 	}
 
-	viper.AutomaticEnv()
-
+	// Try to read config first
 	if err := viper.ReadInConfig(); err != nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
-	}
-
-	// Read the `viper.ConfigFileUsed()` file
-	file, err := os.ReadFile(viper.ConfigFileUsed())
-	if err != nil {
-		errors.HandleErrorWithReason(err, "can't open config file: "+viper.ConfigFileUsed())
-		return
-	}
-
-	// Unmarshal `file` from `yaml`.
-	if err := yaml.Unmarshal(file, &config); err != nil {
-		errors.HandleErrorWithReason(err, "can't unmarshall config at "+viper.ConfigFileUsed())
-		os.Exit(1)
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found - set defaults and create when needed
+			viper.SetDefault("tmux.sessions.history", []string{})
+		} else {
+			errors.HandleErrorWithReason(err, "can't read config file")
+			os.Exit(1)
+		}
 	}
 
 	if verbose {

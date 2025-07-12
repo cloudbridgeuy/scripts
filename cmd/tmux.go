@@ -33,6 +33,7 @@ import (
 	"github.com/cloudbridgeuy/scripts/pkg/logger"
 	"github.com/cloudbridgeuy/scripts/pkg/tmux"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
 )
 
@@ -150,18 +151,7 @@ projects, keeping all the required configuration namespaced inside.`,
 
 		session = strings.TrimSpace(session)
 
-		var sessions []string
-
-		for _, s := range config.Tmux.Sessions.History {
-			if s == session || s == "" {
-				continue
-			}
-			sessions = append(sessions, s)
-		}
-
-		sessions = append(sessions, session)
-
-		config.Tmux.Sessions.History = sessions
+		addToTmuxHistory(session)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
@@ -215,19 +205,18 @@ sessions will be opened and closed from 'tmux' until both lists match.`,
 		reverse, err := cmd.Flags().GetBool("reverse")
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't get the --reverse flag")
-			return
 		}
 
 		sessions, err := tmux.Ls()
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't list tmux sessions")
-			return
 		}
 
 		inHistory := make(map[string]bool)
 		inTmux := make(map[string]bool)
 
-		for _, session := range config.Tmux.Sessions.History {
+		history := getTmuxHistory()
+		for _, session := range history {
 			inHistory[session] = true
 		}
 
@@ -236,7 +225,7 @@ sessions will be opened and closed from 'tmux' until both lists match.`,
 		}
 
 		if reverse {
-			for _, session := range append(sessions, config.Tmux.Sessions.History...) {
+			for _, session := range append(sessions, history...) {
 				if inHistory[session] {
 					if inTmux[session] {
 						continue
@@ -254,7 +243,7 @@ sessions will be opened and closed from 'tmux' until both lists match.`,
 				}
 			}
 		} else {
-			config.Tmux.Sessions.History = sessions
+			setTmuxHistory(sessions)
 
 			if err := saveConfig(); err != nil {
 				errors.HandleErrorWithReason(err, "can't save the config file")
@@ -262,10 +251,37 @@ sessions will be opened and closed from 'tmux' until both lists match.`,
 			}
 		}
 
+		for _, session := range sessions {
+			inTmux[session] = true
+		}
+
+		if reverse {
+			for _, session := range append(sessions, history...) {
+				if inHistory[session] {
+					if inTmux[session] {
+						continue
+					} else {
+						if err := tmux.NewSession(session); err != nil {
+							errors.HandleErrorWithReason(err, fmt.Sprintf("can't create session %s", session))
+						}
+					}
+				} else {
+					if err := tmux.KillSession(session); err != nil {
+						errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
+					}
+				}
+			}
+		} else {
+			setTmuxHistory(sessions)
+
+			if err := saveConfig(); err != nil {
+				errors.HandleErrorWithReason(err, "can't save the config file")
+			}
+		}
+
 		session := sessions[len(sessions)-1]
 		if err = tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
-			return
 		}
 	},
 }
@@ -279,11 +295,12 @@ lists the lines stored on that field.
 
 NOTE: The session history usually doesn't match with Tmux.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		sessionsLength := len(config.Tmux.Sessions.History)
+		history := getTmuxHistory()
+		sessionsLength := len(history)
 
 		var maxWidth int
 
-		for _, s := range config.Tmux.Sessions.History {
+		for _, s := range history {
 			if len(s) > maxWidth {
 				maxWidth = len(s)
 			}
@@ -291,7 +308,7 @@ NOTE: The session history usually doesn't match with Tmux.`,
 
 		format := fmt.Sprintf("%%-3d %%-%ds\t", maxWidth)
 
-		for i, s := range config.Tmux.Sessions.History {
+		for i, s := range history {
 			fmt.Printf(format, i+1, s)
 
 			if i == sessionsLength-1 {
@@ -309,7 +326,8 @@ var prevCmd = &cobra.Command{
 	Long: `We keep a list of all the visited sessions in order of usage. You can
 use this command plus the 'next' command to move between them.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		sessionsLength := len(config.Tmux.Sessions.History)
+		history := getTmuxHistory()
+		sessionsLength := len(history)
 
 		if sessionsLength == 0 {
 			errors.HandleError(fmt.Errorf("No sessions found in history"))
@@ -318,7 +336,7 @@ use this command plus the 'next' command to move between them.`,
 
 		sessions := make([]string, sessionsLength)
 
-		for i, s := range config.Tmux.Sessions.History {
+		for i, s := range history {
 			if i == sessionsLength-1 {
 				sessions[0] = s
 			} else {
@@ -328,7 +346,7 @@ use this command plus the 'next' command to move between them.`,
 
 		session := sessions[sessionsLength-1]
 
-		config.Tmux.Sessions.History = sessions
+		setTmuxHistory(sessions)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
@@ -348,7 +366,8 @@ var nextCmd = &cobra.Command{
 	Long: `We keep a list of all the visited sessions in order of usage. You can
 use this command plus the 'prev' command to move between them.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		sessionsLength := len(config.Tmux.Sessions.History)
+		history := getTmuxHistory()
+		sessionsLength := len(history)
 
 		if sessionsLength == 0 {
 			errors.HandleError(fmt.Errorf("No sessions found in history"))
@@ -357,7 +376,7 @@ use this command plus the 'prev' command to move between them.`,
 
 		sessions := make([]string, sessionsLength)
 
-		for i, s := range config.Tmux.Sessions.History {
+		for i, s := range history {
 			if i == 0 {
 				sessions[sessionsLength-1] = s
 			} else {
@@ -367,7 +386,7 @@ use this command plus the 'prev' command to move between them.`,
 
 		session := sessions[sessionsLength-1]
 
-		config.Tmux.Sessions.History = sessions
+		setTmuxHistory(sessions)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
@@ -389,9 +408,7 @@ var addCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		session := args[0]
 
-		sessions := append(config.Tmux.Sessions.History, session)
-
-		config.Tmux.Sessions.History = sessions
+		addToTmuxHistory(session)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
@@ -414,20 +431,12 @@ var removeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		session := args[0]
 
-		var sessions []string
-		for _, s := range config.Tmux.Sessions.History {
-			if s == session {
-				if err := tmux.KillSession(session); err != nil {
-					errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
-					return
-				}
-				continue
-			}
-
-			sessions = append(sessions, s)
+		if err := tmux.KillSession(session); err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
+			return
 		}
 
-		config.Tmux.Sessions.History = sessions
+		removeFromTmuxHistory(session)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
@@ -435,6 +444,20 @@ var removeCmd = &cobra.Command{
 		}
 	},
 }
+
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Output the current tmux configuration to stdout.",
+	Long:  "Displays the current tmux configuration including session history for debugging purposes.",
+	Run: func(cmd *cobra.Command, args []string) {
+		settings := viper.AllSettings()
+		c, err := yaml.Marshal(settings)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't marshal the config")
+			return
+		}
+		fmt.Print(string(c))
+	}}
 
 var goCmd = &cobra.Command{
 	Use:   "go [SESSION]",
@@ -457,18 +480,8 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 		}
 
 		logger.Debugf("Updating config file with session: %s", session)
-		var sessions []string
 
-		for _, s := range config.Tmux.Sessions.History {
-			if s == session || s == "" {
-				continue
-			}
-			sessions = append(sessions, s)
-		}
-
-		sessions = append(sessions, session)
-
-		config.Tmux.Sessions.History = sessions
+		addToTmuxHistory(session)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
@@ -494,27 +507,9 @@ func init() {
 	tmuxCmd.AddCommand(addCmd)
 	tmuxCmd.AddCommand(removeCmd)
 	tmuxCmd.AddCommand(syncCmd)
+	tmuxCmd.AddCommand(configCmd)
 
 	displayCmd.Flags().Bool("no-switch", false, "Don't run the git commit command automatically")
 
 	syncCmd.Flags().Bool("reverse", false, "Sync from 'tmux' to the history")
-}
-
-func saveConfig() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return errors.NewReasonError(err, "can't get the user home directory")
-	}
-
-	c, err := yaml.Marshal(config)
-	if err != nil {
-		errors.NewReasonError(err, "can't marshal the config file")
-	}
-
-	err = os.WriteFile(home+"/.scripts.yaml", c, 0644)
-	if err != nil {
-		errors.NewReasonError(err, "can't write back the config file")
-	}
-
-	return nil
 }
