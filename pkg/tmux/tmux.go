@@ -86,6 +86,17 @@ func ListSessions() ([]string, error) {
 //
 // The value of `name` is supposed to be a directory path.
 func Switch(name string) error {
+	// Check if the current session has the same name
+	currentSession, err := script.Exec("tmux display-message -p '#S'").String()
+	if err != nil {
+		return fmt.Errorf("failed to get current session name: %w", err)
+	}
+
+	if name == currentSession {
+		logger.Infof("Already in session %s", name)
+		return nil
+	}
+
 	if err := HasSession(name); err != nil {
 		NewSession(name)
 	}
@@ -147,13 +158,20 @@ func HasSession(name string) error {
 
 // DisplaySessions dynamically renders all the current active sessions and allows you to traverse to them.
 func DisplaySessions() (string, error) {
+	execPath, err := os.Executable()
+	if err != nil {
+		execPath = "scripts" // fallback
+	}
+
+	fzfCmd := fmt.Sprintf(`fzf \
+      --header 'Press CTRL-X to delete a session.' \
+      --bind "ctrl-x:execute-silent(%s tmux remove {})+reload(tmux ls -F'#{session_name}')" \
+      --preview "tmux capture-pane -ep -t \"\$(tmux ls -F '#{session_id}' -f '#{==:#{session_name},{}}')\"" --preview-window="right:70%%" --height="100%%"`, execPath)
+
 	buf, err := script.
 		Exec("tmux ls -F'#{session_name}'").
 		Exec("sort -h").
-		Exec(`fzf \
-      --header 'Press CTRL-X to delete a session.' \
-      --bind "ctrl-x:execute-silent(tmux kill-session -t {+})+reload(tmux ls -F'#{session_name}')" \
-      --preview "tmux capture-pane -ep -t \"\$(tmux ls -F '#{session_id}' -f '#{==:#{session_name},{}}')\"" --preview-window="right:70%" --height="100%"`).
+		Exec(fzfCmd).
 		WithStderr(os.Stdout).
 		String()
 
