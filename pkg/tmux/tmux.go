@@ -86,16 +86,16 @@ func ListSessions() ([]string, error) {
 //
 // The value of `name` is supposed to be a directory path.
 func Switch(name string) error {
-	// Check if the current session has the same name
+	// Check if we're currently in a tmux session
 	currentSession, err := script.Exec("tmux display-message -p '#S'").String()
-	if err != nil {
-		return fmt.Errorf("failed to get current session name: %w", err)
+	if err == nil {
+		// We're in a tmux session, check if it's the same one
+		if name == currentSession {
+			logger.Infof("Already in session %s", name)
+			return nil
+		}
 	}
-
-	if name == currentSession {
-		logger.Infof("Already in session %s", name)
-		return nil
-	}
+	// If err != nil, we're not in a tmux session, which is fine - proceed to create/attach
 
 	if err := HasSession(name); err != nil {
 		NewSession(name)
@@ -196,4 +196,55 @@ func Ls() ([]string, error) {
 	}
 
 	return sessions, nil
+}
+
+// GetCurrentSession returns the name of the current tmux session.
+func GetCurrentSession() (string, error) {
+	session, err := script.Exec("tmux display-message -p '#S'").String()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(session), nil
+}
+
+// ListWindows returns a list of window IDs in the current session.
+func ListWindows() ([]string, error) {
+	result, err := script.
+		Exec("tmux list-windows -F'#{window_id}'").
+		String()
+	if err != nil {
+		return nil, err
+	}
+
+	var windows []string
+	for _, window := range strings.Split(result, "\n") {
+		window = strings.TrimSpace(window)
+		if window == "" {
+			continue
+		}
+		windows = append(windows, window)
+	}
+
+	return windows, nil
+}
+
+// NewWindow creates a new window with the given name, command, and directory.
+func NewWindow(name, command, directory string) error {
+	logger.Infof("Creating new window %s", name)
+	logger.Debugf("tmux new-window -n %s -c %s %s", name, directory, command)
+	return script.Exec(fmt.Sprintf("tmux new-window -n %s -c %s %s", name, directory, command)).Wait()
+}
+
+// KillWindow kills a window by its ID.
+func KillWindow(windowID string) error {
+	logger.Infof("Killing window %s", windowID)
+	logger.Debugf("tmux kill-window -t %s", windowID)
+	return script.Exec(fmt.Sprintf("tmux kill-window -t %s", windowID)).Wait()
+}
+
+// SelectWindow selects (focuses) a window by name.
+func SelectWindow(name string) error {
+	logger.Infof("Selecting window %s", name)
+	logger.Debugf("tmux select-window -t %s", name)
+	return script.Exec(fmt.Sprintf("tmux select-window -t %s", name)).Wait()
 }

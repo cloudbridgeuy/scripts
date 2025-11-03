@@ -495,6 +495,60 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 	},
 }
 
+var claudeCmd = &cobra.Command{
+	Use:   "claude",
+	Short: "Configure current session with claude, nvim, and zsh windows.",
+	Long: `Creates three windows named 'claude', 'nvim', and 'zsh' running their
+respective tools, then removes all other windows. Windows are created in order
+and the zsh window is selected at the end.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		// Get current working directory
+		cwd, err := os.Getwd()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get current working directory")
+			return
+		}
+
+		// Get list of existing windows before creating new ones
+		existingWindows, err := tmux.ListWindows()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't list existing windows")
+			return
+		}
+
+		// Create the three new windows in order
+		windows := []struct {
+			name    string
+			command string
+		}{
+			{"claude", "zsh -i -c claude"},
+			{"nvim", "zsh -i -c nvim"},
+			{"zsh", "zsh"},
+		}
+
+		for _, w := range windows {
+			if err := tmux.NewWindow(w.name, w.command, cwd); err != nil {
+				errors.HandleErrorWithReason(err, fmt.Sprintf("can't create window %s", w.name))
+				return
+			}
+		}
+
+		// Remove all existing windows
+		for _, windowID := range existingWindows {
+			if err := tmux.KillWindow(windowID); err != nil {
+				errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill window %s", windowID))
+				// Continue even if we fail to kill a window
+			}
+		}
+
+		// Select the zsh window
+		if err := tmux.SelectWindow("zsh"); err != nil {
+			errors.HandleErrorWithReason(err, "can't select zsh window")
+			return
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(tmuxCmd)
 
@@ -508,6 +562,7 @@ func init() {
 	tmuxCmd.AddCommand(removeCmd)
 	tmuxCmd.AddCommand(syncCmd)
 	tmuxCmd.AddCommand(configCmd)
+	tmuxCmd.AddCommand(claudeCmd)
 
 	displayCmd.Flags().Bool("no-switch", false, "Don't run the git commit command automatically")
 
