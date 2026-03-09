@@ -79,6 +79,12 @@ Here's a brief overview of the main commands:
 - `scripts case`: Text case conversion
 - `scripts watch`: Watch and execute commands at intervals
 
+Tmux behavior notes:
+
+- Session names now use the raw directory/session name directly, without legacy character replacement.
+- Session history is updated only after a successful switch.
+- `scripts tmux sync` handles empty tmux state safely and no longer performs duplicate reconciliation passes.
+
 For detailed information on each command, use the `--help` flag:
 
 ```
