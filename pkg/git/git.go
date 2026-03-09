@@ -50,7 +50,7 @@ func CreateSemanticCommit() (string, error) {
 
 	if _, err = script.
 		Exec("git diff --staged -- . ':(exclude)package-lock.json' ':(exclude)lazy-lock.json' ':(exclude)*.lock'").
-		Exec(fmt.Sprintf("llm-stream --template git-semantic-commit --vars '{ \"branch\": \"%s\" }' --preset pro", branch)).
+		Exec(fmt.Sprintf("llm-stream --template git-semantic-commit --vars '{ \"branch\": \"%s\" }' --preset gpt", branch)).
 		Tee(&buf).
 		Stdout(); err != nil {
 		return "", err
