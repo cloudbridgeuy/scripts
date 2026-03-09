@@ -24,7 +24,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -49,6 +52,167 @@ type directory struct {
 	mindepth int
 	maxdepth int
 	grep     string
+}
+
+func findDirectories(config directory) ([]string, error) {
+	regex := regexp.MustCompile(config.grep)
+	cmd := exec.Command(
+		"/usr/bin/find",
+		config.path,
+		"-mindepth",
+		strconv.Itoa(config.mindepth),
+		"-maxdepth",
+		strconv.Itoa(config.maxdepth),
+		"-type",
+		"d",
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message != "" {
+			return nil, fmt.Errorf("%w: %s", err, message)
+		}
+		return nil, err
+	}
+
+	var matches []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if regex.MatchString(trimmed) {
+			matches = append(matches, trimmed)
+		}
+	}
+
+	return matches, nil
+}
+
+func reverseSyncPlan(history []string, sessions []string) (toCreate []string, toKill []string) {
+	inHistory := make(map[string]bool, len(history))
+	inTmux := make(map[string]bool, len(sessions))
+
+	for _, session := range history {
+		inHistory[session] = true
+	}
+
+	for _, session := range sessions {
+		inTmux[session] = true
+	}
+
+	for _, session := range history {
+		if !inTmux[session] {
+			toCreate = append(toCreate, session)
+		}
+	}
+
+	for _, session := range sessions {
+		if !inHistory[session] {
+			toKill = append(toKill, session)
+		}
+	}
+
+	return toCreate, toKill
+}
+
+func lastSession(sessions []string) (string, bool) {
+	if len(sessions) == 0 {
+		return "", false
+	}
+
+	return sessions[len(sessions)-1], true
+}
+
+func rotateHistoryPrev(history []string) []string {
+	sessionsLength := len(history)
+	sessions := make([]string, sessionsLength)
+
+	for i, session := range history {
+		if i == sessionsLength-1 {
+			sessions[0] = session
+		} else {
+			sessions[i+1] = session
+		}
+	}
+
+	return sessions
+}
+
+func rotateHistoryNext(history []string) []string {
+	sessionsLength := len(history)
+	sessions := make([]string, sessionsLength)
+
+	for i, session := range history {
+		if i == 0 {
+			sessions[sessionsLength-1] = session
+		} else {
+			sessions[i-1] = session
+		}
+	}
+
+	return sessions
+}
+
+func switchWithRotation(history []string, rotate func([]string) []string) ([]string, string, error) {
+	if len(history) == 0 {
+		return nil, "", fmt.Errorf("No sessions found in history")
+	}
+
+	available, err := existingHistorySessions(history)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if len(available) == 0 {
+		return []string{}, "", fmt.Errorf("no available sessions found in history")
+	}
+
+	rotated := available
+	var lastErr error
+
+	for attempts := 0; attempts < len(available); attempts++ {
+		rotated = rotate(rotated)
+		session := rotated[len(rotated)-1]
+
+		if err := tmux.SwitchExisting(session); err == nil {
+			return rotated, session, nil
+		} else {
+			lastErr = err
+		}
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no reachable session found")
+	}
+
+	return nil, "", lastErr
+}
+
+func existingHistorySessions(history []string) ([]string, error) {
+	seen := make(map[string]bool, len(history))
+	available := make([]string, 0, len(history))
+
+	for _, session := range history {
+		if session == "" || seen[session] {
+			continue
+		}
+
+		exists, err := tmux.SessionExists(session)
+		if err != nil {
+			return nil, err
+		}
+
+		if !exists {
+			continue
+		}
+
+		seen[session] = true
+		available = append(available, session)
+	}
+
+	return available, nil
 }
 
 var newCmd = &cobra.Command{
@@ -91,10 +255,10 @@ projects, keeping all the required configuration namespaced inside.`,
 		}
 
 		var (
-			wg        sync.WaitGroup
-			mu        sync.Mutex
-			allOutput string
-			errChan   = make(chan error, len(directories))
+			wg             sync.WaitGroup
+			mu             sync.Mutex
+			allDirectories []string
+			errChan        = make(chan error, len(directories))
 		)
 
 		for _, dir := range directories {
@@ -103,11 +267,7 @@ projects, keeping all the required configuration namespaced inside.`,
 				defer wg.Done()
 
 				logger.Debugf("/usr/bin/find %s -mindepth %d -maxdepth %d -type d", dir.path, dir.mindepth, dir.maxdepth)
-				regex := regexp.MustCompile(dir.grep)
-				output, err := script.
-					Exec(fmt.Sprintf("/usr/bin/find %s -mindepth %d -maxdepth %d -type d", dir.path, dir.mindepth, dir.maxdepth)).
-					MatchRegexp(regex).
-					String()
+				matches, err := findDirectories(dir)
 				if err != nil {
 					logger.Errorf("find %s -mindepth %d -maxdepth %d -type d", dir.path, dir.mindepth, dir.maxdepth)
 					logger.Errorf(err.Error())
@@ -116,8 +276,7 @@ projects, keeping all the required configuration namespaced inside.`,
 				}
 
 				mu.Lock()
-				allOutput = allOutput + "\n" + strings.TrimSpace(output)
-				// allOutput = allOutput + "\n" + strings.Join(dirs, "\n")
+				allDirectories = append(allDirectories, matches...)
 				mu.Unlock()
 			}(dir)
 		}
@@ -134,9 +293,24 @@ projects, keeping all the required configuration namespaced inside.`,
 			}
 		}
 
+		if len(allDirectories) == 0 {
+			errors.HandleErrorWithReason(fmt.Errorf("no directories found"), "can't evaluate the list of possible directories")
+			return
+		}
+
+		deduped := make(map[string]bool, len(allDirectories))
+		var sortedDirectories []string
+		for _, directory := range allDirectories {
+			if deduped[directory] {
+				continue
+			}
+			deduped[directory] = true
+			sortedDirectories = append(sortedDirectories, directory)
+		}
+		sort.Strings(sortedDirectories)
+
 		session, err := script.
-			Echo(strings.TrimSpace(allOutput)).
-			Exec("sort -ur").
+			Echo(strings.Join(sortedDirectories, "\n")).
 			Exec(`fzf \
         --header 'Select the directory where you want your session to be created.' \
         --preview "eza -lha --icons --group-directories-first --git --no-user --color=always {}" \
@@ -150,16 +324,19 @@ projects, keeping all the required configuration namespaced inside.`,
 		}
 
 		session = strings.TrimSpace(session)
-
-		addToTmuxHistory(session)
-
-		if err := saveConfig(); err != nil {
-			errors.HandleErrorWithReason(err, "can't save the config file")
+		if session == "" {
 			return
 		}
 
 		if err = tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
+
+		addToTmuxHistory(session)
+
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
 			return
 		}
 	},
@@ -190,6 +367,13 @@ var displayCmd = &cobra.Command{
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
+
+		addToTmuxHistory(session)
+
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
+		}
 	},
 }
 
@@ -205,83 +389,55 @@ sessions will be opened and closed from 'tmux' until both lists match.`,
 		reverse, err := cmd.Flags().GetBool("reverse")
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't get the --reverse flag")
+			return
 		}
 
 		sessions, err := tmux.Ls()
 		if err != nil {
 			errors.HandleErrorWithReason(err, "can't list tmux sessions")
+			return
 		}
-
-		inHistory := make(map[string]bool)
-		inTmux := make(map[string]bool)
-
 		history := getTmuxHistory()
-		for _, session := range history {
-			inHistory[session] = true
-		}
-
-		for _, session := range sessions {
-			inTmux[session] = true
-		}
 
 		if reverse {
-			for _, session := range append(sessions, history...) {
-				if inHistory[session] {
-					if inTmux[session] {
-						continue
-					} else {
-						if err := tmux.NewSession(session); err != nil {
-							errors.HandleErrorWithReason(err, fmt.Sprintf("can't create session %s", session))
-							return
-						}
-					}
-				} else {
-					if err := tmux.KillSession(session); err != nil {
-						errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
-						return
-					}
+			toCreate, toKill := reverseSyncPlan(history, sessions)
+
+			for _, session := range toCreate {
+				if err := tmux.NewSession(session); err != nil {
+					errors.HandleErrorWithReason(err, fmt.Sprintf("can't create session %s", session))
+					return
 				}
 			}
-		} else {
-			setTmuxHistory(sessions)
 
-			if err := saveConfig(); err != nil {
-				errors.HandleErrorWithReason(err, "can't save the config file")
+			for _, session := range toKill {
+				if err := tmux.KillSession(session); err != nil {
+					errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
+					return
+				}
+			}
+
+			sessions, err = tmux.Ls()
+			if err != nil {
+				errors.HandleErrorWithReason(err, "can't list tmux sessions")
 				return
 			}
 		}
 
-		for _, session := range sessions {
-			inTmux[session] = true
+		setTmuxHistory(sessions)
+
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
 		}
 
-		if reverse {
-			for _, session := range append(sessions, history...) {
-				if inHistory[session] {
-					if inTmux[session] {
-						continue
-					} else {
-						if err := tmux.NewSession(session); err != nil {
-							errors.HandleErrorWithReason(err, fmt.Sprintf("can't create session %s", session))
-						}
-					}
-				} else {
-					if err := tmux.KillSession(session); err != nil {
-						errors.HandleErrorWithReason(err, fmt.Sprintf("can't kill session %s", session))
-					}
-				}
-			}
-		} else {
-			setTmuxHistory(sessions)
-
-			if err := saveConfig(); err != nil {
-				errors.HandleErrorWithReason(err, "can't save the config file")
-			}
+		session, ok := lastSession(sessions)
+		if !ok {
+			return
 		}
 
-		session := sessions[len(sessions)-1]
 		if err = tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
 		}
 	},
 }
@@ -327,34 +483,17 @@ var prevCmd = &cobra.Command{
 use this command plus the 'next' command to move between them.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		history := getTmuxHistory()
-		sessionsLength := len(history)
 
-		if sessionsLength == 0 {
-			errors.HandleError(fmt.Errorf("No sessions found in history"))
+		sessions, _, err := switchWithRotation(history, rotateHistoryPrev)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't switch to a previous session")
 			return
 		}
-
-		sessions := make([]string, sessionsLength)
-
-		for i, s := range history {
-			if i == sessionsLength-1 {
-				sessions[0] = s
-			} else {
-				sessions[i+1] = s
-			}
-		}
-
-		session := sessions[sessionsLength-1]
 
 		setTmuxHistory(sessions)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
-			return
-		}
-
-		if err := tmux.Switch(session); err != nil {
-			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
 	},
@@ -367,34 +506,17 @@ var nextCmd = &cobra.Command{
 use this command plus the 'prev' command to move between them.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		history := getTmuxHistory()
-		sessionsLength := len(history)
 
-		if sessionsLength == 0 {
-			errors.HandleError(fmt.Errorf("No sessions found in history"))
+		sessions, _, err := switchWithRotation(history, rotateHistoryNext)
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't switch to a next session")
 			return
 		}
-
-		sessions := make([]string, sessionsLength)
-
-		for i, s := range history {
-			if i == 0 {
-				sessions[sessionsLength-1] = s
-			} else {
-				sessions[i-1] = s
-			}
-		}
-
-		session := sessions[sessionsLength-1]
 
 		setTmuxHistory(sessions)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
-			return
-		}
-
-		if err := tmux.Switch(session); err != nil {
-			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
 	},
@@ -408,16 +530,16 @@ var addCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		session := args[0]
 
+		err := tmux.Switch(session)
+		if err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
+
 		addToTmuxHistory(session)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
-			return
-		}
-
-		err := tmux.Switch(session)
-		if err != nil {
-			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
 	},
@@ -481,15 +603,15 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 
 		logger.Debugf("Updating config file with session: %s", session)
 
+		if err := tmux.Switch(session); err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
+			return
+		}
+
 		addToTmuxHistory(session)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
-			return
-		}
-
-		if err := tmux.Switch(session); err != nil {
-			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
 			return
 		}
 	},
@@ -564,7 +686,7 @@ func init() {
 	tmuxCmd.AddCommand(configCmd)
 	tmuxCmd.AddCommand(claudeCmd)
 
-	displayCmd.Flags().Bool("no-switch", false, "Don't run the git commit command automatically")
+	displayCmd.Flags().Bool("no-switch", false, "Display sessions without switching")
 
-	syncCmd.Flags().Bool("reverse", false, "Sync from 'tmux' to the history")
+	syncCmd.Flags().Bool("reverse", false, "Sync from history to 'tmux'")
 }
