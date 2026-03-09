@@ -23,6 +23,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/cloudbridgeuy/scripts/pkg/errors"
 	"github.com/cloudbridgeuy/scripts/pkg/logger"
@@ -67,7 +68,24 @@ func removeFromTmuxHistory(session string) {
 }
 
 func saveConfig() error {
-	return viper.WriteConfig()
+	if viper.ConfigFileUsed() != "" {
+		return viper.WriteConfig()
+	}
+
+	if cfgFile != "" {
+		viper.SetConfigFile(cfgFile)
+		return viper.WriteConfigAs(cfgFile)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	configPath := filepath.Join(home, ".scripts.yaml")
+	viper.SetConfigFile(configPath)
+
+	return viper.WriteConfigAs(configPath)
 }
 
 func reloadConfig() error {
