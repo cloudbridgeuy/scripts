@@ -235,6 +235,12 @@ projects, keeping all the required configuration namespaced inside.`,
 				grep:     ".*",
 			},
 			{
+				path:     home + "/Projects/Bare",
+				mindepth: 2,
+				maxdepth: 2,
+				grep:     ".*/Projects/Bare/[^/]*/[^/]*",
+			},
+			{
 				path:     home + "/Projects",
 				mindepth: 3,
 				maxdepth: 4,
