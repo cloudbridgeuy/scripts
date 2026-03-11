@@ -2,9 +2,9 @@ package term
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
-	"github.com/bitfield/script"
 	"golang.org/x/term"
 )
 
@@ -27,11 +27,16 @@ func IsTerm() bool {
 }
 
 func CenterCursor() error {
-	_, err := script.Exec("tput cup 0 0").Stdout()
+	_, err := fmt.Fprint(os.Stdout, "\033[H")
 	return err
 }
 
 func Clear() error {
-	_, err := script.Exec("clear").Stdout()
+	_, err := fmt.Fprint(os.Stdout, "\033[2J\033[H")
+	return err
+}
+
+func ClearFromCursor() error {
+	_, err := fmt.Fprint(os.Stdout, "\033[J")
 	return err
 }

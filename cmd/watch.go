@@ -146,6 +146,22 @@ value will be used to authenticate the 'gh' cli.`,
 	},
 }
 
+// parseWatchArgs splits args at the first "--" separator.
+// Returns flags (everything before "--") and command (everything after "--").
+// Both returned slices are built with append, so they contain no trailing empty strings.
+func parseWatchArgs(args []string) (flags []string, command []string) {
+	flags = []string{}
+	command = []string{}
+	for i, arg := range args {
+		if arg == "--" {
+			command = append(command, args[i+1:]...)
+			return flags, command
+		}
+		flags = append(flags, arg)
+	}
+	return flags, command
+}
+
 func init() {
 	rootCmd.AddCommand(watchCmd)
 
