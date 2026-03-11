@@ -24,12 +24,11 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/bitfield/script"
 	"github.com/cloudbridgeuy/scripts/pkg/errors"
 	"github.com/cloudbridgeuy/scripts/pkg/term"
 	"github.com/fatih/color"
@@ -41,21 +40,12 @@ var watchCmd = &cobra.Command{
 	DisableFlagsInUseLine: true,
 	Short:                 "Watch a command",
 	DisableFlagParsing:    true,
-	Long: `The list of accounts will be constructed based on all environment
-variables found that begin with 'GITHUB_PAT'. Once selected, its
-value will be used to authenticate the 'gh' cli.`,
+	Long: `Repeatedly executes a command at a configurable interval and highlights
+character-level differences between consecutive runs.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
-		options := make([]string, len(args))
-		command := []string{}
-		for i, arg := range args {
-			if arg == "--" {
-				command = args[i+1:]
-				break
-			}
-			options[i] = arg
-		}
+		options, command := parseWatchArgs(args)
 
 		cmd.DisableFlagParsing = false
 
@@ -90,33 +80,42 @@ value will be used to authenticate the 'gh' cli.`,
 			os.Exit(1)
 		}
 
-		fmt.Print(columns)
-
 		term.Clear()
 
 		envVars := os.Environ()
 		envVars = append(envVars, fmt.Sprintf("COLUMNS=%d", columns))
 
+		execCommand := func() (string, error) {
+			c := exec.Command(command[0], command[1:]...)
+			c.Env = envVars
+			out, err := c.CombinedOutput()
+			return string(out), err
+		}
+
+		curr, err := execCommand()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "Can't execute command")
+			os.Exit(1)
+		}
+
+		yellow := color.New(color.FgYellow).SprintFunc()
+		green := color.New(color.FgGreen).SprintFunc()
+
 		go func() {
-			var err error
-			var curr, next string
-			curr, err = script.Exec(strings.Join(command, " ")).WithEnv(envVars).String()
-			if err != nil {
-				errors.HandleErrorWithReason(err, "Can't execute command")
-				os.Exit(1)
-			}
-
-			yellow := color.New(color.FgYellow).SprintFunc()
-			green := color.New(color.FgGreen).SprintFunc()
-
 			for {
 				// Wait for `interval` amount of seconds.
 				time.Sleep(time.Duration(interval) * time.Second)
 
-				next, err = script.Exec(strings.Join(command, " ")).WithEnv(envVars).String()
+				next, err := execCommand()
 				if err != nil {
-					errors.HandleErrorWithReason(err, "Can't execute command")
-					os.Exit(1)
+					term.CenterCursor()
+					if next != "" {
+						fmt.Print(next)
+					} else {
+						fmt.Print(err.Error())
+					}
+					term.ClearFromCursor()
+					continue
 				}
 
 				term.CenterCursor()
@@ -135,6 +134,7 @@ value will be used to authenticate the 'gh' cli.`,
 						fmt.Print(string(nextRunes[i]))
 					}
 				}
+				term.ClearFromCursor()
 				curr = next
 			}
 		}()
