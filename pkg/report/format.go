@@ -31,7 +31,7 @@ func FormatXML(results []Result) (string, error) {
 			Description: r.Action.Description,
 			Command:     r.Action.Command,
 			Status:      r.ExitCode,
-			Output:      "\n" + strings.TrimRight(r.Output, "\n") + "\n    ",
+			Output:      strings.TrimRight(r.Output, "\n"),
 		}
 	}
 

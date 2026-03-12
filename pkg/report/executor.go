@@ -54,7 +54,7 @@ func ExecuteActions(actions []Action, onError OnErrorBehavior, shell string) []R
 	results := make([]Result, 0, len(actions))
 
 	for _, action := range actions {
-		cmd := exec.Command(shell, "-ic", action.Command)
+		cmd := exec.Command(shell, "-c", action.Command)
 		output, err := cmd.CombinedOutput()
 		code := exitCode(err)
 

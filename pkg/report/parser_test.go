@@ -79,6 +79,14 @@ func TestParseActions(t *testing.T) {
 				{Description: "deploy", Command: "gcloud --project foo"},
 			},
 		},
+		{
+			name:  "indented comment lines",
+			input: "  # Check role\n  gcloud iam roles describe foo\n  # Check binding\n  gcloud projects get-iam-policy bar",
+			expected: []Action{
+				{Description: "Check role", Command: "  gcloud iam roles describe foo"},
+				{Description: "Check binding", Command: "  gcloud projects get-iam-policy bar"},
+			},
+		},
 	}
 
 	for _, tt := range tests {

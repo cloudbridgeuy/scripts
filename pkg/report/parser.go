@@ -29,9 +29,10 @@ func ParseActions(text string) []Action {
 			continue
 		}
 
-		// Rule 1: comment line
-		if strings.HasPrefix(line, "#") {
-			description = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+		// Rule 1: comment line (trim leading whitespace before checking)
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			description = strings.TrimSpace(strings.TrimPrefix(trimmed, "#"))
 			continue
 		}
 
