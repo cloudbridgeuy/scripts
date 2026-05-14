@@ -101,3 +101,46 @@ date +%Y-%m-%d
 - Cobra command handler (`cmd/report.go`) — wires flags, resolves input, parses, executes, formats, and prints
 
 **Shell selection** uses `$SHELL` environment variable with `/bin/sh` as fallback. Commands run with `-c` (command string) to avoid sourcing interactive shell profiles.
+
+## Markdown Command (`markdown.go`)
+
+Converts a Markdown file into a self-contained HTML page with a terminal aesthetic, the tokyonight-night colour palette, syntax-highlighted code fences, and client-side Mermaid diagram rendering.
+
+### Usage
+
+```
+scripts markdown [flags] <FILE>
+scripts md [flags] <FILE>          # alias
+```
+
+### Flags
+
+- `-o, --output` — Write the HTML to this path instead of the default sibling path.
+- `--open` — Open the result in the default browser after writing.
+
+### Output Path Rules
+
+- By default the output is written beside the source file with its extension replaced by `.html` (e.g. `docs/foo.md` → `docs/foo.html`).
+- An extensionless input gains `.html` (e.g. `README` → `README.html`).
+- `--output` overrides the path verbatim; no extension manipulation is applied.
+
+### Architecture
+
+**Functional core** — pure functions in `pkg/markdown`, no I/O:
+
+- `ResolveOutputPath(inputPath, outputFlag string) string` (`paths.go`) — computes the output path according to the rules above.
+- `NewRenderConfig(inputPath, outputFlag string, open bool) RenderConfig` (`types.go`) — validates and stores the resolved configuration.
+- `StripFrontmatter(src []byte) []byte` (`frontmatter.go`) — removes a YAML front-matter block (delimited by `---`) from the source before rendering.
+- `ExtractTitle(body []byte, fallback string) string` (`frontmatter.go`) — extracts the first `# Heading` from the rendered source as the page title, falling back to the supplied string when no heading is found.
+- `RenderMarkdown(src []byte) (string, error)` (`convert.go`) — converts Markdown to HTML via goldmark with a custom code-block renderer: fences whose language is `mermaid` are emitted as `<pre class="mermaid">` (picked up by the CDN-loaded `mermaid.js`); all other fenced blocks are syntax-highlighted by chroma using the `tokyonight-night` style.
+- `ChromaCSS() (string, error)` (`chroma.go`) — generates the chroma stylesheet for `tokyonight-night`.
+- `BuildPage(body, title, chromaCSS string) string` (`page.go`) — assembles the final HTML document by substituting `{{TITLE}}`, `{{PAGE_CSS}}`, `{{CHROMA_CSS}}`, and `{{BODY}}` placeholders in the embedded `template.html`, using `strings.NewReplacer` for a single safe pass.
+
+**Embedded assets** — `template.html` and `styles.css` are embedded at compile time via `//go:embed` directives in `page.go`; the binary is fully self-contained with no runtime file dependencies.
+
+**CDN dependency** — `mermaid.js` is loaded from `https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js` at page-view time; diagram rendering requires an internet connection.
+
+**Imperative shell** — `cmd/markdown.go`:
+
+- Reads the input file, calls the core pipeline, writes the output file.
+- `openBrowser(path string) error` is the one impure helper: it dispatches to `open` (macOS) or `xdg-open` (Linux) via `os/exec`.
