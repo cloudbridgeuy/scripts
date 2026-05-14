@@ -67,6 +67,7 @@ func TestExtractTitle(t *testing.T) {
 		{"h2 is not an h1", "## Subhead\n", "fallback", "fallback"},
 		{"hash with no space is not a heading", "#Title\n", "fallback", "fallback"},
 		{"empty input uses fallback", "", "fallback", "fallback"},
+		{"bare # heading falls back", "# \n\nbody\n", "fallback", "fallback"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -24,7 +24,9 @@ func ExtractTitle(src []byte, fallback string) string {
 	for _, line := range strings.Split(string(src), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "# ") {
-			return strings.TrimSpace(trimmed[2:])
+			if text := strings.TrimSpace(trimmed[2:]); text != "" {
+				return text
+			}
 		}
 	}
 	return fallback
