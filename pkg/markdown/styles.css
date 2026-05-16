@@ -5,6 +5,7 @@
   --dim: #565f89;
   --accent: #7aa2f7;
   --border: #414868;
+  --yellow: #e0af68;
 }
 
 * { box-sizing: border-box; }
@@ -23,7 +24,7 @@ body {
 }
 
 .content {
-  max-width: 80ch;
+  max-width: 96ch;
   margin: 0 auto;
   padding: 3rem 1.5rem 6rem;
 }
@@ -45,6 +46,7 @@ p { margin: 1rem 0; }
 
 code {
   background: var(--bg-lift);
+  color: var(--yellow);
   padding: 0.1rem 0.3rem;
   font-size: 0.9em;
 }
@@ -58,6 +60,7 @@ pre {
 
 pre code {
   background: none;
+  color: var(--fg);
   padding: 0;
   font-size: 0.85rem;
 }
