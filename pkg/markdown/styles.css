@@ -6,6 +6,12 @@
   --accent: #7aa2f7;
   --border: #414868;
   --yellow: #e0af68;
+  --h1: #9ec1fd;
+  --h2: #80aefc;
+  --h3: #629bfa;
+  --h4: #5089ec;
+  --h5: #4f82d6;
+  --h6: #4f78bd;
 }
 
 * { box-sizing: border-box; }
@@ -33,11 +39,15 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   line-height: 1.3;
   margin: 2rem 0 1rem;
+  letter-spacing: -0.01em;
 }
 
-h1 { font-size: 1.6rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
-h2 { font-size: 1.3rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
-h3 { font-size: 1.1rem; }
+h1 { font-size: 1.8rem; color: var(--h1); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+h2 { font-size: 1.4rem; color: var(--h2); border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
+h3 { font-size: 1.15rem; color: var(--h3); }
+h4 { font-size: 1rem; color: var(--h4); }
+h5 { font-size: 0.95rem; color: var(--h5); }
+h6 { font-size: 0.9rem; color: var(--h6); }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
