@@ -122,14 +122,17 @@ scripts md [flags] <FILE>          # alias
 
 - By default the output is written beside the source file with its extension replaced by `.html` (e.g. `docs/foo.md` → `docs/foo.html`).
 - An extensionless input gains `.html` (e.g. `README` → `README.html`).
-- `--output` overrides the path verbatim; no extension manipulation is applied.
+- `--output` overrides the path verbatim; no extension manipulation is applied. `--output` always wins — even when `--open` is also set, the file is **not** temporary.
+- `--open` without `--output` writes to a temporary file in the OS temp directory using the pattern `<base-without-ext>-*.html` (nameless inputs and dotfiles fall back to `"markdown"`). The source directory is left clean.
+- Stdout always prints the path of the file that was written, including the materialized temp-file path.
 
 ### Architecture
 
 **Functional core** — pure functions in `pkg/markdown`, no I/O:
 
-- `ResolveOutputPath(inputPath, outputFlag string) string` (`paths.go`) — computes the output path according to the rules above.
-- `NewRenderConfig(inputPath, outputFlag string, open bool) RenderConfig` (`types.go`) — validates and stores the resolved configuration.
+- `ResolveOutputPath(inputPath, outputFlag string) string` (`paths.go`) — computes the sibling output path (extension swap / `.html` append).
+- `ResolveOutputTarget(inputPath, outputFlag string, open bool) OutputTarget` (`paths.go`) — applies the full precedence: `--output` → concrete path; `--open` alone → `OutputTarget{Temp: true}` with a temp pattern; otherwise delegates to `ResolveOutputPath`.
+- `NewRenderConfig(inputPath, outputFlag string, open bool) RenderConfig` (`types.go`) — validates CLI inputs and stores `InputPath`, `Output OutputTarget`, and `Open`.
 - `StripFrontmatter(src []byte) []byte` (`frontmatter.go`) — removes a YAML front-matter block (delimited by `---`) from the source before rendering.
 - `ExtractTitle(body []byte, fallback string) string` (`frontmatter.go`) — extracts the first `# Heading` from the rendered source as the page title, falling back to the supplied string when no heading is found.
 - `RenderMarkdown(src []byte) (string, error)` (`convert.go`) — converts Markdown to HTML via goldmark with a custom code-block renderer: fences whose language is `mermaid` are emitted as `<pre class="mermaid">` (picked up by the CDN-loaded `mermaid.js`); all other fenced blocks are syntax-highlighted by chroma using the `tokyonight-night` style.

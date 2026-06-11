@@ -46,7 +46,8 @@ document's external links and images.
 
 The HTML is written beside the source file with a .html extension by default.
 Use --output to choose another path, and --open to view the result in the
-default browser.`,
+default browser. With --open and no --output, the page is rendered to a
+temporary file so the source directory stays clean.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		outputFlag, err := cmd.Flags().GetString("output")
@@ -60,7 +61,7 @@ default browser.`,
 		}
 
 		cfg := markdown.NewRenderConfig(args[0], outputFlag, open)
-		logger.Debug("resolved render config", "input", cfg.InputPath, "output", cfg.OutputPath)
+		logger.Debug("resolved render config", "input", cfg.InputPath, "output", cfg.Output.Path, "temp", cfg.Output.Temp)
 
 		src, err := os.ReadFile(cfg.InputPath)
 		if err != nil {
@@ -87,19 +88,33 @@ default browser.`,
 
 		page := markdown.BuildPage(htmlBody, title, chromaCSS, markdown.LinksFooter(links))
 
-		if err := os.WriteFile(cfg.OutputPath, []byte(page), 0644); err != nil {
+		outPath := cfg.Output.Path
+		if cfg.Output.Temp {
+			f, err := os.CreateTemp("", cfg.Output.Path)
+			if err != nil {
+				errors.HandleErrorWithReason(err, "Can't create the temporary output file")
+			}
+			if _, err := f.WriteString(page); err != nil {
+				f.Close()
+				errors.HandleErrorWithReason(err, "Can't write the output file")
+			}
+			if err := f.Close(); err != nil {
+				errors.HandleErrorWithReason(err, "Can't close the temporary output file")
+			}
+			outPath = f.Name()
+		} else if err := os.WriteFile(outPath, []byte(page), 0644); err != nil {
 			errors.HandleErrorWithReason(err, "Can't write the output file")
 		}
 
-		logger.Info("wrote HTML page", "path", cfg.OutputPath)
+		logger.Info("wrote HTML page", "path", outPath)
 
 		if cfg.Open {
-			if err := openBrowser(cfg.OutputPath); err != nil {
+			if err := openBrowser(outPath); err != nil {
 				errors.HandleErrorWithReason(err, "Can't open the browser")
 			}
 		}
 
-		fmt.Println(cfg.OutputPath)
+		fmt.Println(outPath)
 	},
 }
 
@@ -116,5 +131,5 @@ func openBrowser(path string) error {
 func init() {
 	rootCmd.AddCommand(markdownCmd)
 	markdownCmd.Flags().StringP("output", "o", "", "Write HTML to this path instead of the default sibling path")
-	markdownCmd.Flags().Bool("open", false, "Open the result in the default browser")
+	markdownCmd.Flags().Bool("open", false, "Open the result in the default browser (renders to a temporary file unless --output is set)")
 }

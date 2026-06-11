@@ -14,8 +14,8 @@ src bytes
 
 | File | Exports | Role |
 |---|---|---|
-| `paths.go` | `ResolveOutputPath` | Compute the output path. Default swaps the source extension to `.html`; extensionless inputs gain `.html`; the `-o/--output` flag overrides verbatim. |
-| `types.go` | `RenderConfig`, `NewRenderConfig` | Validated configuration record built from CLI args. |
+| `paths.go` | `ResolveOutputPath`, `OutputTarget`, `ResolveOutputTarget` | Compute the output destination. `OutputTarget{Path, Temp}` names either a concrete path or an `os.CreateTemp` pattern. `ResolveOutputTarget` applies precedence: `--output` wins and is never temporary; `--open` alone yields a temp pattern `<base>-*.html` (nameless/dotfile inputs fall back to `"markdown"`); otherwise delegates to the unchanged sibling rule in `ResolveOutputPath`. The directory portion of the input path is stripped from the temp pattern. |
+| `types.go` | `RenderConfig`, `NewRenderConfig` | Validated configuration record: `InputPath string`, `Output OutputTarget`, `Open bool`. `Open` drives the browser-open step; `Output.Temp` only selects the destination. Built from CLI args by `NewRenderConfig`. |
 | `frontmatter.go` | `StripFrontmatter`, `ExtractTitle` | Strip a leading `---`-delimited YAML block. Title comes from the first non-empty ATX H1; falls back to the supplied default when none is found. |
 | `convert.go` | `RenderMarkdown` | goldmark + GFM with a custom code-block renderer registered at priority 100 (beats the default 1000). `mermaid` fences pass through as `<pre class="mermaid">` (with `util.EscapeHTML` on the source); all other fences run through chroma. |
 | `chroma.go` | `ChromaCSS` | Emit the class-based chroma stylesheet for the `tokyonight-night` style. |
