@@ -127,6 +127,12 @@ pre.mermaid {
   background: var(--bg-lift);
   border: 1px solid var(--border);
   text-align: center;
+  width: fit-content;
+  min-width: 100%;
+  max-width: var(--wide);
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 footer.links {

@@ -22,13 +22,14 @@ src bytes
 | `links.go` | `Link`, `ExtractLinks`, `LinksFooter` | Walk the goldmark+GFM AST to collect external (`http`/`https`) inline links, reference links, autolinks, and images; deduplicated by URL, first occurrence wins, document order. Code fences produce no link nodes. `LinksFooter` renders a `<footer class="links">` with a numbered `<ol>`; label falls back to URL; images are marked `<em>(image)</em>`; returns `""` when there are no links so the placeholder collapses. |
 | `page.go` | `BuildPage` | Replace `{{TITLE}}`, `{{PAGE_CSS}}`, `{{CHROMA_CSS}}`, `{{BODY}}`, `{{LINKS}}` in `template.html` in a single `strings.NewReplacer` pass. |
 | `template.html` | (embedded via `//go:embed`) | HTML scaffold with the `mermaid.js` `<script type="module">` block. |
-| `styles.css` | (embedded via `//go:embed`) | Tokyonight-night palette, monospace body, heading colour ramp, yellow inline code, mermaid block frame, links footer (top border, dim heading, smaller font, word-break on URLs), wide media (tables and standalone images may grow past the 96ch text column up to `--wide: min(140ch, 100vw - 3rem)`, centered on the column; inline images stay inline). |
+| `styles.css` | (embedded via `//go:embed`) | Tokyonight-night palette, monospace body, heading colour ramp, yellow inline code, mermaid block frame, links footer (top border, dim heading, smaller font, word-break on URLs), wide media (tables, standalone images, and mermaid blocks may grow past the 96ch text column up to `--wide: min(140ch, 100vw - 3rem)`, centered on the column; inline images stay inline). |
 
 ## Notes
 
 - The `if !entering { return ast.WalkContinue, nil }` guard in `renderFencedCodeBlock` **must remain**. goldmark's `ast.Walk` still fires the exit pass for code blocks regardless of `WalkSkipChildren`, so the guard prevents emitting the block twice. (Reviewers occasionally flag it as dead code — it isn't.)
 - `RenderMarkdown` enables `goldmarkhtml.WithUnsafe()` so the `<pre class="mermaid">` output reaches the page unescaped.
 - Mermaid is loaded from `https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js` at view time; diagram rendering needs network access.
+- `mermaid.initialize` sets `useMaxWidth: false` per diagram type so each SVG gets its natural pixel width. The `pre.mermaid` frame (`width: fit-content`, capped at `--wide`) then tracks the diagram instead of mermaid scaling it down to the text column; diagrams wider than the cap scroll inside the frame.
 - The chroma style name is the single constant `chromaStyleName = "tokyonight-night"` in `chroma.go`; change it there to retheme highlighted code.
 
 ## Tests

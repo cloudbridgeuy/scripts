@@ -11,7 +11,25 @@
 {{CHROMA_CSS}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
+<script>
+// useMaxWidth: false gives each SVG its natural pixel width, so the
+// pre.mermaid frame (width: fit-content, capped at --wide) can track the
+// diagram instead of scaling it down to the text column.
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  flowchart: { useMaxWidth: false },
+  sequence: { useMaxWidth: false },
+  class: { useMaxWidth: false },
+  state: { useMaxWidth: false },
+  er: { useMaxWidth: false },
+  gantt: { useMaxWidth: false },
+  pie: { useMaxWidth: false },
+  journey: { useMaxWidth: false },
+  timeline: { useMaxWidth: false },
+  gitGraph: { useMaxWidth: false }
+});
+</script>
 </head>
 <body>
 <main class="content">
