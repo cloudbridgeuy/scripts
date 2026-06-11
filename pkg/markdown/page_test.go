@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildPage(t *testing.T) {
-	page := BuildPage("<p>hello</p>", "My <Title>", ".chroma { color: #fff; }")
+	page := BuildPage("<p>hello</p>", "My <Title>", ".chroma { color: #fff; }", "")
 
 	if !strings.Contains(page, "<p>hello</p>") {
 		t.Errorf("body not injected:\n%s", page)
@@ -38,7 +38,7 @@ func TestBuildPageDoesNotReExpandPlaceholders(t *testing.T) {
 	title := "RealTitle"
 	chromaCSS := ".x{}"
 
-	page := BuildPage(body, title, chromaCSS)
+	page := BuildPage(body, title, chromaCSS, "")
 
 	// The real {{TITLE}} token in the template must be replaced with the title.
 	if !strings.Contains(page, "<title>RealTitle</title>") {
@@ -49,5 +49,22 @@ func TestBuildPageDoesNotReExpandPlaceholders(t *testing.T) {
 	// strings.NewReplacer does not re-scan already-emitted output.
 	if !strings.Contains(page, "literal {{TITLE}} text") {
 		t.Errorf("expected body-injected literal {{TITLE}} to be preserved verbatim:\n%s", page)
+	}
+}
+
+func TestBuildPageInjectsLinksFooter(t *testing.T) {
+	footer := `<footer class="links"><h2>Links</h2></footer>`
+	page := BuildPage("<p>x</p>", "T", "", footer)
+
+	if !strings.Contains(page, footer) {
+		t.Errorf("links footer not injected:\n%s", page)
+	}
+
+	empty := BuildPage("<p>x</p>", "T", "", "")
+	if strings.Contains(empty, "{{LINKS}}") {
+		t.Errorf("unreplaced LINKS placeholder remains:\n%s", empty)
+	}
+	if strings.Contains(empty, "<footer") {
+		t.Errorf("empty links footer should leave no footer element:\n%s", empty)
 	}
 }

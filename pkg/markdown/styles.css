@@ -111,3 +111,25 @@ pre.mermaid {
   border: 1px solid var(--border);
   text-align: center;
 }
+
+footer.links {
+  margin-top: 4rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+}
+
+footer.links h2 {
+  color: var(--dim);
+  border-bottom: none;
+  font-size: 1.1rem;
+}
+
+footer.links .url {
+  color: var(--dim);
+  word-break: break-all;
+}
+
+footer.links em {
+  color: var(--dim);
+}

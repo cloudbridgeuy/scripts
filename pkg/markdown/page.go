@@ -34,12 +34,14 @@ var pageTemplate string
 var pageCSS string
 
 // BuildPage assembles a complete HTML document from a rendered body fragment,
-// a page title, and a generated chroma stylesheet.
-func BuildPage(body, title, chromaCSS string) string {
+// a page title, a generated chroma stylesheet, and an optional links footer
+// (pass "" for documents without external links).
+func BuildPage(body, title, chromaCSS, linksHTML string) string {
 	return strings.NewReplacer(
 		"{{TITLE}}", html.EscapeString(title),
 		"{{PAGE_CSS}}", pageCSS,
 		"{{CHROMA_CSS}}", chromaCSS,
 		"{{BODY}}", body,
+		"{{LINKS}}", linksHTML,
 	).Replace(pageTemplate)
 }

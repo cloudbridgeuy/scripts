@@ -40,8 +40,9 @@ var markdownCmd = &cobra.Command{
 	Aliases: []string{"md"},
 	Short:   "Convert a Markdown file into a styled HTML page",
 	Long: `Converts a Markdown file into a self-styled HTML page with a terminal
-aesthetic, the tokyonight-night palette, syntax-highlighted code fences, and
-client-side Mermaid diagram rendering.
+aesthetic, the tokyonight-night palette, syntax-highlighted code fences,
+client-side Mermaid diagram rendering, and a Links footer listing the
+document's external links and images.
 
 The HTML is written beside the source file with a .html extension by default.
 Use --output to choose another path, and --open to view the result in the
@@ -81,7 +82,10 @@ default browser.`,
 			errors.HandleErrorWithReason(err, "Can't generate the syntax-highlighting CSS")
 		}
 
-		page := markdown.BuildPage(htmlBody, title, chromaCSS)
+		links := markdown.ExtractLinks(body)
+		logger.Debug("extracted links", "count", len(links))
+
+		page := markdown.BuildPage(htmlBody, title, chromaCSS, markdown.LinksFooter(links))
 
 		if err := os.WriteFile(cfg.OutputPath, []byte(page), 0644); err != nil {
 			errors.HandleErrorWithReason(err, "Can't write the output file")

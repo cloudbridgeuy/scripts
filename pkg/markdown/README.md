@@ -7,6 +7,7 @@ Functional core for the `markdown` (alias `md`) command. All exports are pure fu
 ```
 src bytes
   └─ StripFrontmatter ─▶ ExtractTitle ─▶ RenderMarkdown ─▶ ChromaCSS ─▶ BuildPage ─▶ html string
+                      └─ ExtractLinks ─▶ LinksFooter ──────────────────────┘
 ```
 
 ## Files
@@ -18,9 +19,10 @@ src bytes
 | `frontmatter.go` | `StripFrontmatter`, `ExtractTitle` | Strip a leading `---`-delimited YAML block. Title comes from the first non-empty ATX H1; falls back to the supplied default when none is found. |
 | `convert.go` | `RenderMarkdown` | goldmark + GFM with a custom code-block renderer registered at priority 100 (beats the default 1000). `mermaid` fences pass through as `<pre class="mermaid">` (with `util.EscapeHTML` on the source); all other fences run through chroma. |
 | `chroma.go` | `ChromaCSS` | Emit the class-based chroma stylesheet for the `tokyonight-night` style. |
-| `page.go` | `BuildPage` | Replace `{{TITLE}}`, `{{PAGE_CSS}}`, `{{CHROMA_CSS}}`, `{{BODY}}` in `template.html` in a single `strings.NewReplacer` pass. |
+| `links.go` | `Link`, `ExtractLinks`, `LinksFooter` | Walk the goldmark+GFM AST to collect external (`http`/`https`) inline links, reference links, autolinks, and images; deduplicated by URL, first occurrence wins, document order. Code fences produce no link nodes. `LinksFooter` renders a `<footer class="links">` with a numbered `<ol>`; label falls back to URL; images are marked `<em>(image)</em>`; returns `""` when there are no links so the placeholder collapses. |
+| `page.go` | `BuildPage` | Replace `{{TITLE}}`, `{{PAGE_CSS}}`, `{{CHROMA_CSS}}`, `{{BODY}}`, `{{LINKS}}` in `template.html` in a single `strings.NewReplacer` pass. |
 | `template.html` | (embedded via `//go:embed`) | HTML scaffold with the `mermaid.js` `<script type="module">` block. |
-| `styles.css` | (embedded via `//go:embed`) | Tokyonight-night palette, monospace body, heading colour ramp, yellow inline code, mermaid block frame. |
+| `styles.css` | (embedded via `//go:embed`) | Tokyonight-night palette, monospace body, heading colour ramp, yellow inline code, mermaid block frame, links footer (top border, dim heading, smaller font, word-break on URLs). |
 
 ## Notes
 

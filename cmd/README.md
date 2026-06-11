@@ -104,7 +104,7 @@ date +%Y-%m-%d
 
 ## Markdown Command (`markdown.go`)
 
-Converts a Markdown file into a self-contained HTML page with a terminal aesthetic, the tokyonight-night colour palette, syntax-highlighted code fences, and client-side Mermaid diagram rendering.
+Converts a Markdown file into a self-contained HTML page with a terminal aesthetic, the tokyonight-night colour palette, syntax-highlighted code fences, client-side Mermaid diagram rendering, and a numbered Links footer collecting all external (`http`/`https`) links and images found in the document. The footer is omitted when the document contains no such links.
 
 ### Usage
 
@@ -134,7 +134,9 @@ scripts md [flags] <FILE>          # alias
 - `ExtractTitle(body []byte, fallback string) string` (`frontmatter.go`) — extracts the first `# Heading` from the rendered source as the page title, falling back to the supplied string when no heading is found.
 - `RenderMarkdown(src []byte) (string, error)` (`convert.go`) — converts Markdown to HTML via goldmark with a custom code-block renderer: fences whose language is `mermaid` are emitted as `<pre class="mermaid">` (picked up by the CDN-loaded `mermaid.js`); all other fenced blocks are syntax-highlighted by chroma using the `tokyonight-night` style.
 - `ChromaCSS() (string, error)` (`chroma.go`) — generates the chroma stylesheet for `tokyonight-night`.
-- `BuildPage(body, title, chromaCSS string) string` (`page.go`) — assembles the final HTML document by substituting `{{TITLE}}`, `{{PAGE_CSS}}`, `{{CHROMA_CSS}}`, and `{{BODY}}` placeholders in the embedded `template.html`, using `strings.NewReplacer` for a single safe pass.
+- `ExtractLinks(src []byte) []Link` (`links.go`) — walks the goldmark+GFM AST to collect external (`http`/`https`) inline links, reference links, autolinks, and images; deduplicates by URL, first occurrence wins, document order.
+- `LinksFooter(links []Link) string` (`links.go`) — renders a `<footer class="links">` with a numbered `<ol>`; returns `""` when there are no links.
+- `BuildPage(body, title, chromaCSS, linksHTML string) string` (`page.go`) — assembles the final HTML document by substituting `{{TITLE}}`, `{{PAGE_CSS}}`, `{{CHROMA_CSS}}`, `{{BODY}}`, and `{{LINKS}}` placeholders in the embedded `template.html`, using `strings.NewReplacer` for a single safe pass.
 
 **Embedded assets** — `template.html` and `styles.css` are embedded at compile time via `//go:embed` directives in `page.go`; the binary is fully self-contained with no runtime file dependencies.
 
@@ -142,5 +144,5 @@ scripts md [flags] <FILE>          # alias
 
 **Imperative shell** — `cmd/markdown.go`:
 
-- Reads the input file, calls the core pipeline, writes the output file.
+- Reads the input file, calls the core pipeline (including `ExtractLinks` + `LinksFooter` on the post-frontmatter body), writes the output file.
 - `openBrowser(path string) error` is the one impure helper: it dispatches to `open` (macOS) or `xdg-open` (Linux) via `os/exec`.
