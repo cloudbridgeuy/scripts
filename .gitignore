@@ -6,3 +6,4 @@ manpages/
 dist/
 *.md
 !README.md
+*.test
