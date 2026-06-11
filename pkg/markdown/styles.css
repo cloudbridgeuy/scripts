@@ -12,6 +12,7 @@
   --h4: #5089ec;
   --h5: #4f82d6;
   --h6: #4f78bd;
+  --wide: min(140ch, calc(100vw - 3rem));
 }
 
 * { box-sizing: border-box; }
@@ -84,8 +85,13 @@ blockquote {
 
 table {
   border-collapse: collapse;
-  width: 100%;
+  width: fit-content;
+  min-width: 100%;
+  max-width: var(--wide);
   margin: 1rem 0;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 th, td {
@@ -105,6 +111,17 @@ hr {
 ul, ol { padding-left: 1.5rem; }
 
 img { max-width: 100%; }
+
+/* A paragraph whose only element is an image — goldmark's shape for a
+   standalone ![alt](url) line — renders as a centered figure that may
+   outgrow the text column. Inline images and badges keep the rule above. */
+.content p > img:only-child {
+  display: block;
+  max-width: var(--wide);
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+}
 
 pre.mermaid {
   background: var(--bg-lift);
