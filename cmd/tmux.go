@@ -677,6 +677,59 @@ and the zsh window is selected at the end.`,
 	},
 }
 
+var harnessesCmd = &cobra.Command{
+	Use:   "harnesses",
+	Short: "List running harness panes and jump to one.",
+	Long: `Lists every tmux pane running a harness (claude, codex, opencode)
+with its current status, and jumps to the selected pane.
+
+Status comes from the pane hooks (see tmux-notifications-helper.sh),
+which store it in pane options, so it survives the harness
+overwriting its own pane title.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		listOnly, err := cmd.Flags().GetBool("list")
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't get the --list flag")
+			return
+		}
+
+		panes, err := tmux.ListHarnessPanes()
+		if err != nil {
+			errors.HandleErrorWithReason(err, "can't list harness panes")
+			return
+		}
+
+		if len(panes) == 0 {
+			fmt.Println("No harness panes found")
+			return
+		}
+
+		if listOnly {
+			for _, p := range panes {
+				fmt.Println(tmux.FormatHarnessPane(p))
+			}
+			return
+		}
+
+		selected, err := tmux.DisplayHarnessPanes(panes)
+		if err != nil {
+			return
+		}
+
+		if err := tmux.JumpToHarnessPane(selected); err != nil {
+			errors.HandleErrorWithReason(err, fmt.Sprintf("can't jump to pane %s", selected.PaneID))
+			return
+		}
+
+		addToTmuxHistory(selected.SessionName)
+
+		if err := saveConfig(); err != nil {
+			errors.HandleErrorWithReason(err, "can't save the config file")
+			return
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(tmuxCmd)
 
@@ -691,8 +744,10 @@ func init() {
 	tmuxCmd.AddCommand(syncCmd)
 	tmuxCmd.AddCommand(configCmd)
 	tmuxCmd.AddCommand(claudeCmd)
+	tmuxCmd.AddCommand(harnessesCmd)
 
 	displayCmd.Flags().Bool("no-switch", false, "Display sessions without switching")
+	harnessesCmd.Flags().Bool("list", false, "Print harness panes without switching")
 
 	syncCmd.Flags().Bool("reverse", false, "Sync from history to 'tmux'")
 }

@@ -74,6 +74,7 @@ Here's a brief overview of the main commands:
   - `new`: Create a new session
   - `display`: Show running sessions
   - `go`: Switch to a session
+  - `harnesses`: List running harness panes (claude, codex, opencode) with status and jump to one
   - `sync`: Synchronize sessions
 - `scripts ssh`: SSH utilities
 - `scripts case`: Text case conversion

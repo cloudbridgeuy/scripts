@@ -267,3 +267,254 @@ func SelectWindow(name string) error {
 	logger.Debugf("tmux select-window -t %s", name)
 	return runTmux("select-window", "-t", name)
 }
+
+type HarnessPane struct {
+	SessionID    string
+	SessionName  string
+	WindowID     string
+	WindowIndex  string
+	WindowName   string
+	PaneID       string
+	PaneIndex    string
+	Harness      string
+	State        string
+	Title        string
+	Command      string
+	StartCommand string
+	Path         string
+}
+
+func HarnessSymbol(state string) string {
+	switch state {
+	case "working":
+		return "●"
+	case "waiting-input":
+		return "?"
+	case "waiting-permission":
+		return "!"
+	case "done":
+		return "✓"
+	default:
+		return "·"
+	}
+}
+
+func ShortenHome(path string) string {
+	home := os.Getenv("HOME")
+	if home != "" && strings.HasPrefix(path, home) {
+		return "~" + strings.TrimPrefix(path, home)
+	}
+	return path
+}
+
+func inferHarnessState(title string) string {
+	trimmed := strings.TrimSpace(title)
+	switch {
+	case strings.HasSuffix(trimmed, " ●"):
+		return "working"
+	case strings.HasSuffix(trimmed, " ?"):
+		return "waiting-input"
+	case strings.HasSuffix(trimmed, " !"):
+		return "waiting-permission"
+	case strings.HasSuffix(trimmed, " ✓"):
+		return "done"
+	default:
+		return ""
+	}
+}
+
+func titleHasHarnessMarker(title string) string {
+	trimmed := strings.TrimSpace(title)
+	if strings.HasPrefix(trimmed, "OC |") {
+		return "opencode"
+	}
+	lower := strings.ToLower(trimmed)
+	for _, name := range []string{"claude", "codex", "opencode"} {
+		if lower == name || strings.HasPrefix(lower, name+" ") {
+			return name
+		}
+	}
+	return ""
+}
+
+func IsStaleHarness(p HarnessPane) bool {
+	switch p.Command {
+	case "zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "tmux", "screen", "":
+		return titleHasHarnessMarker(p.Title) == ""
+	default:
+		return false
+	}
+}
+
+func looksLikeVersion(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+		for _, r := range part {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func inferHarness(title, command, startCommand, windowName string) (string, string) {
+	for _, cmd := range []string{"claude", "codex", "opencode"} {
+		if command == cmd || strings.Contains(startCommand, cmd) {
+			return cmd, inferHarnessState(title)
+		}
+	}
+	if looksLikeVersion(command) {
+		return "claude", inferHarnessState(title)
+	}
+	lower := strings.ToLower(strings.TrimSpace(title))
+	for _, name := range []string{"claude", "codex", "opencode"} {
+		if lower == name || strings.HasPrefix(lower, name+" ") {
+			return name, inferHarnessState(title)
+		}
+	}
+	if strings.HasPrefix(title, "OC |") {
+		return "opencode", inferHarnessState(title)
+	}
+	if windowName == "claude" {
+		return "claude", inferHarnessState(title)
+	}
+	return "", ""
+}
+
+func ParseHarnessFields(fields []string) (HarnessPane, bool) {
+	if len(fields) != 13 {
+		return HarnessPane{}, false
+	}
+	p := HarnessPane{
+		SessionID:    fields[0],
+		SessionName:  fields[1],
+		WindowID:     fields[2],
+		WindowIndex:  fields[3],
+		WindowName:   fields[4],
+		PaneID:       fields[5],
+		PaneIndex:    fields[6],
+		Harness:      fields[7],
+		State:        fields[8],
+		Title:        fields[9],
+		Command:      fields[10],
+		StartCommand: fields[11],
+		Path:         fields[12],
+	}
+	if p.PaneID == "" {
+		return HarnessPane{}, false
+	}
+	if p.Harness == "" {
+		harness, state := inferHarness(p.Title, p.Command, p.StartCommand, p.WindowName)
+		if harness == "" {
+			return HarnessPane{}, false
+		}
+		p.Harness = harness
+		p.State = state
+	}
+	return p, true
+}
+
+func ListHarnessPanes() ([]HarnessPane, error) {
+	format := strings.Join([]string{
+		"#{session_id}", "#{session_name}", "#{window_id}", "#{window_index}",
+		"#{window_name}", "#{pane_id}", "#{pane_index}", "#{@harness}",
+		"#{@harness_state}", "#{pane_title}", "#{pane_current_command}",
+		"#{pane_start_command}", "#{pane_current_path}",
+		"#{?pane_id,HARNESS_RECORD_END,}",
+	}, "\n")
+	text, err := runTmuxOutput("list-panes", "-a", "-F", format)
+	if err != nil {
+		if isNoServerRunning(err) || isExitCode(err, 1) {
+			return []HarnessPane{}, nil
+		}
+		return nil, err
+	}
+	var panes []HarnessPane
+	lines := strings.Split(text, "\n")
+	for i := 0; i+13 < len(lines); i += 14 {
+		if lines[i+13] != "HARNESS_RECORD_END" {
+			continue
+		}
+		if p, ok := ParseHarnessFields(lines[i : i+13]); ok {
+			if !IsStaleHarness(p) {
+				panes = append(panes, p)
+			}
+		}
+	}
+	return panes, nil
+}
+
+func FormatHarnessPane(p HarnessPane) string {
+	clean := func(s string) string {
+		s = strings.ReplaceAll(s, "\t", " ")
+		s = strings.ReplaceAll(s, "\n", " ")
+		return strings.TrimSpace(s)
+	}
+	title := clean(p.Title)
+	if title == "" {
+		title = clean(p.Path)
+	}
+	session := clean(ShortenHome(p.SessionName))
+	return fmt.Sprintf("%s\t%s %s\t%s\t%s:%s\t%s",
+		p.PaneID, HarnessSymbol(p.State), p.Harness, session,
+		p.WindowIndex, p.PaneIndex, title)
+}
+
+func DisplayHarnessPanes(panes []HarnessPane) (HarnessPane, error) {
+	lines := make([]string, 0, len(panes))
+	index := make(map[string]HarnessPane, len(panes))
+	for _, p := range panes {
+		lines = append(lines, FormatHarnessPane(p))
+		index[p.PaneID] = p
+	}
+	fzfCmd := `fzf --delimiter='\t' --with-nth=2,3,4,5 ` +
+		`--header 'Select harness pane to jump to.' ` +
+		`--preview "tmux capture-pane -ep -t {1}" --preview-window="right:60%" --height="100%"`
+	buf, err := script.
+		Echo(strings.Join(lines, "\n")).
+		Exec(fzfCmd).
+		WithStderr(os.Stdout).
+		String()
+	if err != nil {
+		return HarnessPane{}, err
+	}
+	selected := strings.TrimSpace(buf)
+	if selected == "" {
+		return HarnessPane{}, fmt.Errorf("no pane selected")
+	}
+	paneID := selected
+	if i := strings.Index(selected, "\t"); i >= 0 {
+		paneID = selected[:i]
+	}
+	p, ok := index[paneID]
+	if !ok {
+		return HarnessPane{}, fmt.Errorf("unknown pane selected: %s", paneID)
+	}
+	return p, nil
+}
+
+func JumpToHarnessPane(p HarnessPane) error {
+	inside := os.Getenv("TMUX") != ""
+	if inside {
+		if err := runTmux("switch-client", "-t", p.SessionID); err != nil {
+			return err
+		}
+	}
+	if err := runTmux("select-window", "-t", p.WindowID); err != nil {
+		return err
+	}
+	if err := runTmux("select-pane", "-t", p.PaneID); err != nil {
+		return err
+	}
+	if !inside {
+		return Attach(p.SessionID)
+	}
+	return nil
+}
