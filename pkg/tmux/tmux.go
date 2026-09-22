@@ -338,6 +338,9 @@ func titleHasHarnessMarker(title string) string {
 }
 
 func IsStaleHarness(p HarnessPane) bool {
+	if marker := titleHasHarnessMarker(p.Title); marker != "" && marker != p.Harness {
+		return true
+	}
 	switch p.Command {
 	case "zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "tmux", "screen", "":
 		return titleHasHarnessMarker(p.Title) == ""
@@ -417,6 +420,21 @@ func ParseHarnessFields(fields []string) (HarnessPane, bool) {
 		}
 		p.Harness = harness
 		p.State = state
+	} else {
+		live := ""
+		for _, cmd := range []string{"claude", "codex", "opencode"} {
+			if p.Command == cmd {
+				live = cmd
+				break
+			}
+		}
+		if live == "" && looksLikeVersion(p.Command) {
+			live = "claude"
+		}
+		if live != "" && live != p.Harness {
+			p.Harness = live
+			p.State = inferHarnessState(p.Title)
+		}
 	}
 	return p, true
 }

@@ -113,9 +113,15 @@ func TestParseHarnessFieldsDetectsClaudeByVersionCommand(t *testing.T) {
 func TestIsStaleHarness(t *testing.T) {
 	t.Parallel()
 
-	stale := HarnessPane{Harness: "claude", State: "done", Title: "zsh in mcptools", Command: "zsh"}
-	if !IsStaleHarness(stale) {
-		t.Fatal("expected exited harness with shell foreground to be stale")
+	stale := []HarnessPane{
+		{Harness: "claude", State: "done", Title: "zsh in mcptools", Command: "zsh"},
+		{Harness: "claude", State: "done", Title: "OC | Task", Command: "zsh"},
+		{Harness: "opencode", Title: "claude ?", Command: "zsh"},
+	}
+	for _, p := range stale {
+		if !IsStaleHarness(p) {
+			t.Fatalf("expected pane to be stale: %#v", p)
+		}
 	}
 
 	kept := []HarnessPane{
@@ -128,5 +134,26 @@ func TestIsStaleHarness(t *testing.T) {
 		if IsStaleHarness(p) {
 			t.Fatalf("expected pane to be kept: %#v", p)
 		}
+	}
+}
+
+func TestParseHarnessFieldsLiveCommandOverridesStoredOpts(t *testing.T) {
+	t.Parallel()
+
+	p, ok := ParseHarnessFields([]string{
+		"$5", "/Users/test/mcptools", "@5", "3", "GUZ-161", "%5", "1",
+		"claude", "waiting-input", "OC | Auto-DAG sliced feature orchestration", "opencode", "", "/Users/test/mcptools",
+	})
+	if !ok {
+		t.Fatal("expected fields to parse")
+	}
+	if p.Harness != "opencode" {
+		t.Fatalf("unexpected harness: %q", p.Harness)
+	}
+	if p.State != "" {
+		t.Fatalf("expected reset state, got %q", p.State)
+	}
+	if IsStaleHarness(p) {
+		t.Fatal("expected overridden pane to be kept")
 	}
 }

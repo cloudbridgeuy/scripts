@@ -17,8 +17,8 @@ Tmux session and window management primitives. Wraps the `tmux` CLI directly via
 
 ## Harness API
 
-- `ListHarnessPanes() ([]HarnessPane, error)` — all panes running a harness (claude, codex, opencode), detected via `@harness` / `@harness_state` pane options (set by the shell hooks) with fallback inference from title, command, start command, and window name. A bare `major.minor.patch` foreground command means `claude` (it rewrites its process name to its version). Drops stale entries where the foreground is back to a shell with no harness title marker.
-- `IsStaleHarness(pane) bool` — true when the harness exited (foreground is an interactive shell or empty, title shows no harness marker).
+- `ListHarnessPanes() ([]HarnessPane, error)` — all panes running a harness (claude, codex, opencode), detected via `@harness` / `@harness_state` pane options (set by the shell hooks) with fallback inference from title, command, start command, and window name. A bare `major.minor.patch` foreground command means `claude` (it rewrites its process name to its version). A live foreground command naming a harness always overrides conflicting stored options (pane reused by another harness), resetting state to title-derived. Drops stale entries where the foreground is back to a shell with no harness title marker, or where the title marker names a different harness than the stored one.
+- `IsStaleHarness(pane) bool` — true when the harness exited: foreground is an interactive shell or empty with no harness title marker, or the title marker names a different harness than the recorded one.
 - `DisplayHarnessPanes(panes) (HarnessPane, error)` — fzf picker with pane-capture preview; returns the selected pane.
 - `JumpToHarnessPane(pane) error` — jumps to the pane across sessions via stable IDs (`switch-client` + `select-window` + `select-pane`), avoiding session-name escaping issues.
 - `FormatHarnessPane(pane) string` — tab-separated display line (`pane_id`, status, session, `window:pane`, title) for fzf with hidden ID column.
