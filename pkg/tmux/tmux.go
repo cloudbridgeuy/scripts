@@ -58,8 +58,12 @@ func shellJoin(args []string) string {
 	return strings.Join(quoted, " ")
 }
 
-func remotePaneCommand(host, dir string) string {
-	return "ssh -t " + host + " " + shellQuote("cd "+shellQuote(dir)+` && exec "$SHELL" -l`)
+func remotePaneCommand(host, dir, localSocket string) string {
+	remoteCmd := shellQuote("cd " + shellQuote(dir) + ` && "$SHELL" -l; rm -f "$SCRIPTS_TMUX_SOCKET"`)
+	forward := `"$sock:"` + shellQuote(localSocket)
+	script := `sock=/tmp/scripts-tmux-$$.sock; exec ssh -t -R ` + forward + " " + host +
+		` "export SCRIPTS_TMUX_SOCKET=$sock; " ` + remoteCmd
+	return "sh -c " + shellQuote(script)
 }
 
 func runTmux(args ...string) error {
@@ -197,16 +201,23 @@ func NewSession(name string) error {
 	canonical := CanonicalSessionName(name)
 
 	if host, dir := ParseTarget(name); host != "" {
-		paneCmd := remotePaneCommand(host, dir)
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return err
 		}
 		logger.Infof("Creating remote session %s", name)
-		if err := runTmux("new-session", "-d", "-s", canonical, "-c", home, paneCmd); err != nil {
+		if err := runTmux("new-session", "-d", "-s", canonical, "-c", home); err != nil {
 			return err
 		}
+		localSocket, err := runTmuxOutput("display-message", "-p", "-t", canonical, "#{socket_path}")
+		if err != nil {
+			return err
+		}
+		paneCmd := remotePaneCommand(host, dir, localSocket)
 		if err := runTmux("set-option", "-w", "-t", canonical, "default-command", paneCmd); err != nil {
+			return err
+		}
+		if err := runTmux("respawn-pane", "-k", "-t", canonical, paneCmd); err != nil {
 			return err
 		}
 		if err := runTmux("set-environment", "-t", canonical, "SCRIPTS_REMOTE_HOST", host); err != nil {

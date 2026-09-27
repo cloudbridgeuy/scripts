@@ -42,7 +42,7 @@ Sessions are named after directory paths. Dots in directory names conflict with 
 ## Remote Targets
 
 - A remote session is addressed as a qualified `HOST:session` argument (e.g. `web1:/a/b`). Host names are `~/.ssh/config` aliases typed by the user; there are no new config keys.
-- It is a LOCAL tmux session whose panes run `ssh` — remote machines need only ssh, no tmux. The pane command is `ssh -t host 'cd dir && exec "$SHELL" -l'`.
+- It is a LOCAL tmux session whose panes run `ssh` — remote machines need only ssh, no tmux. The pane command reverse-forwards the local tmux server socket (`ssh -t -R remote_sock:local_sock host ...`) and exports `SCRIPTS_TMUX_SOCKET=remote_sock` in the remote shell before `cd dir && "$SHELL" -l`, so a `scripts` binary on the remote drives the local tmux server; the socket is cleaned up with `rm -f` on shell exit.
 - tmux silently maps `:` to `_` in session names at creation, so `CanonicalSessionName()` mirrors that (`:` and `.` → `_`) and runs before every tmux `-t`/`-s` call: a `HOST:dir` argument targets the stored `HOST_dir` session.
 - `NewSession` also sets the session-scoped `default-command` to the same ssh pane command, so `Ctrl-b c`, `Ctrl-b %`, and `Ctrl-b "` open new ssh panes in that session.
 - `SCRIPTS_REMOTE_HOST` / `SCRIPTS_REMOTE_DIR` session environment markers record the target; `RemoteInfo` reads them back to map a live session name to `HOST:session`.

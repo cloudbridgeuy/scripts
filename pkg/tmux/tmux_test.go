@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"os/exec"
 	"reflect"
 	"testing"
 )
@@ -220,8 +221,14 @@ func TestShellQuoteAndJoin(t *testing.T) {
 func TestRemotePaneCommand(t *testing.T) {
 	t.Parallel()
 
-	if got := remotePaneCommand("h", "/x"); got != `ssh -t h 'cd '"'"'/x'"'"' && exec "$SHELL" -l'` {
+	got := remotePaneCommand("h", "/x", "/tmp/sock")
+	want := `sh -c 'sock=/tmp/scripts-tmux-$$.sock; exec ssh -t -R "$sock:"'"'"'/tmp/sock'"'"' h "export SCRIPTS_TMUX_SOCKET=$sock; " '"'"'cd '"'"'"'"'"'"'"'"'/x'"'"'"'"'"'"'"'"' && "$SHELL" -l; rm -f "$SCRIPTS_TMUX_SOCKET"'"'"''`
+	if got != want {
 		t.Fatalf("unexpected pane command: %q", got)
+	}
+
+	if err := exec.Command("sh", "-n", "-c", got).Run(); err != nil {
+		t.Fatalf("pane command failed sh -n: %v", err)
 	}
 }
 
