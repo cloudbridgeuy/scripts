@@ -2,6 +2,8 @@
 
 Tmux session and window management primitives. Wraps the `tmux` CLI directly via `os/exec` (with `bitfield/script` reserved for piped fzf flows).
 
+If `SCRIPTS_TMUX_SOCKET` is set and non-empty, every tmux invocation targets that socket (`-S <socket>`), e.g. for talking to a tmux server forwarded over `ssh -R`.
+
 ## Session API
 
 - `Switch(name string) error` — switches to `name`, creating the session if it doesn't exist. Inside tmux uses `switch-client`; outside it uses `attach`.

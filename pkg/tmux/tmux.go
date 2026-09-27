@@ -11,6 +11,22 @@ import (
 	"github.com/cloudbridgeuy/scripts/pkg/logger"
 )
 
+const tmuxSocketEnvVar = "SCRIPTS_TMUX_SOCKET"
+
+func tmuxSocketArgs(args ...string) []string {
+	if socket := os.Getenv(tmuxSocketEnvVar); socket != "" {
+		return append([]string{"-S", socket}, args...)
+	}
+	return args
+}
+
+func tmuxShellCmd() string {
+	if socket := os.Getenv(tmuxSocketEnvVar); socket != "" {
+		return "tmux -S " + shellQuote(socket)
+	}
+	return "tmux"
+}
+
 func ParseTarget(arg string) (host, session string) {
 	i := strings.Index(arg, ":")
 	if i <= 0 {
@@ -47,7 +63,7 @@ func remotePaneCommand(host, dir string) string {
 }
 
 func runTmux(args ...string) error {
-	cmd := exec.Command("tmux", args...)
+	cmd := exec.Command("tmux", tmuxSocketArgs(args...)...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -61,7 +77,7 @@ func runTmux(args ...string) error {
 }
 
 func runTmuxOutput(args ...string) (string, error) {
-	cmd := exec.Command("tmux", args...)
+	cmd := exec.Command("tmux", tmuxSocketArgs(args...)...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(output))
@@ -170,7 +186,7 @@ func SwitchClient(name string) error {
 func Attach(name string) error {
 	logger.Infof("Attaching to session %s", name)
 	logger.Debugf("tmux attach -t %s", name)
-	cmd := exec.Command("tmux", "attach", "-d", "-t", name)
+	cmd := exec.Command("tmux", tmuxSocketArgs("attach", "-d", "-t", name)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -266,13 +282,14 @@ func RemoteInfo(session string) (string, string, bool) {
 }
 
 func DisplaySessions() (string, error) {
+	tmuxCmd := tmuxShellCmd()
 	fzfCmd := fmt.Sprintf(`fzf \
       --header 'Press CTRL-X to delete a session.' \
-      --bind "ctrl-x:execute-silent(tmux kill-session -t {})+reload(tmux ls -F'#{session_name}')" \
-      --preview "tmux capture-pane -ep -t \"\$(tmux ls -F '#{session_id}' -f '#{==:#{session_name},{}}')\"" --preview-window="right:70%%" --height="100%%"`)
+      --bind "ctrl-x:execute-silent(%[1]s kill-session -t {})+reload(%[1]s ls -F'#{session_name}')" \
+      --preview "%[1]s capture-pane -ep -t \"\$(%[1]s ls -F '#{session_id}' -f '#{==:#{session_name},{}}')\"" --preview-window="right:70%%" --height="100%%"`, tmuxCmd)
 
 	buf, err := script.
-		Exec("tmux ls -F'#{session_name}'").
+		Exec(tmuxCmd + " ls -F'#{session_name}'").
 		Exec("sort -h").
 		Exec(fzfCmd).
 		WithStderr(os.Stdout).
@@ -554,7 +571,7 @@ func DisplayHarnessPanes(panes []HarnessPane) (HarnessPane, error) {
 	}
 	fzfCmd := `fzf --delimiter='\t' --with-nth=2,3,4,5 ` +
 		`--header 'Select harness pane to jump to.' ` +
-		`--preview "tmux capture-pane -ep -t {1}" --preview-window="right:60%" --height="100%"`
+		`--preview "` + tmuxShellCmd() + ` capture-pane -ep -t {1}" --preview-window="right:60%" --height="100%"`
 	buf, err := script.
 		Echo(strings.Join(lines, "\n")).
 		Exec(fzfCmd).

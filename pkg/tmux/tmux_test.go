@@ -249,3 +249,15 @@ func TestParseRemoteEnv(t *testing.T) {
 		t.Fatal("expected empty host to be rejected")
 	}
 }
+
+func TestTmuxSocketArgs(t *testing.T) {
+	t.Setenv("SCRIPTS_TMUX_SOCKET", "")
+	if got := tmuxSocketArgs("ls", "-F"); !reflect.DeepEqual(got, []string{"ls", "-F"}) {
+		t.Fatalf("unexpected args with unset socket: %#v", got)
+	}
+
+	t.Setenv("SCRIPTS_TMUX_SOCKET", "/tmp/my sock")
+	if got := tmuxSocketArgs("ls", "-F"); !reflect.DeepEqual(got, []string{"-S", "/tmp/my sock", "ls", "-F"}) {
+		t.Fatalf("unexpected args with set socket: %#v", got)
+	}
+}
