@@ -28,6 +28,10 @@ If `SCRIPTS_TMUX_SOCKET` is set and non-empty, every tmux invocation targets tha
 - `FormatHarnessPane(pane) string` — tab-separated display line (`pane_id`, status, session, `window:pane`, title) for fzf with hidden ID column.
 - `HarnessSymbol(state) string` — maps hook state (`working`, `waiting-input`, `waiting-permission`, `done`) to `● ? ! ✓`.
 
+## Notify API
+
+- `Notify(verb, harness, reason string) error` — implements `scripts tmux notify {working|waiting|done|clear}`: sets/clears the pane title and `@harness`/`@harness_state`/`@harness_updated` pane options, and for `waiting`/`done` sends an external notification via `NOTIFY_SCRIPT` (default `$HOME/.local/bin/tmux-notifications.sh`) when the pane isn't the active one. All tmux failures are swallowed (matches the old hook script); the only error is an unknown verb. The target pane is `SCRIPTS_TMUX_PANE` if set, else `$TMUX_PANE`; if neither is set, it's a no-op.
+
 ## Window API
 
 - `ListWindows() ([]string, error)`
@@ -46,6 +50,7 @@ Sessions are named after directory paths. Dots in directory names conflict with 
 - tmux silently maps `:` to `_` in session names at creation, so `CanonicalSessionName()` mirrors that (`:` and `.` → `_`) and runs before every tmux `-t`/`-s` call: a `HOST:dir` argument targets the stored `HOST_dir` session.
 - `NewSession` also sets the session-scoped `default-command` to the same ssh pane command, so `Ctrl-b c`, `Ctrl-b %`, and `Ctrl-b "` open new ssh panes in that session.
 - `SCRIPTS_REMOTE_HOST` / `SCRIPTS_REMOTE_DIR` session environment markers record the target; `RemoteInfo` reads them back to map a live session name to `HOST:session`.
+- The pane command also exports `SCRIPTS_TMUX_PANE=$TMUX_PANE` remotely (expanded locally, before the ssh hop), so `scripts tmux notify` run on the remote host still targets the local pane, without touching the remote's own `TMUX_PANE`.
 - `sync` maps live sessions through those markers before writing history; `--reverse` compares names canonically and recreates missing sessions from their qualified history entries.
 - Every tmux call stays local; no remote tmux is involved. A remote directory picker is not implemented yet.
 

@@ -713,7 +713,7 @@ var harnessesCmd = &cobra.Command{
 	Long: `Lists every tmux pane running a harness (claude, codex, opencode)
 with its current status, and jumps to the selected pane.
 
-Status comes from the pane hooks (see tmux-notifications-helper.sh),
+Status comes from the pane hooks (see 'scripts tmux notify'),
 which store it in pane options, so it survives the harness
 overwriting its own pane title.`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -760,6 +760,38 @@ overwriting its own pane title.`,
 	},
 }
 
+var notifyCmd = &cobra.Command{
+	Use:   "notify {working|waiting|done|clear} [harness] [reason]",
+	Short: "Update the pane title and harness state for hook-driven notifications.",
+	Long: `Sets or clears the pane title and the @harness/@harness_state/@harness_updated
+pane options used by 'tmux harnesses'. When the pane is away from the active
+client, 'waiting' and 'done' also send an external notification through
+NOTIFY_SCRIPT (default '$HOME/.local/bin/tmux-notifications.sh').
+
+The target pane is SCRIPTS_TMUX_PANE if set, else TMUX_PANE. Works from a
+remote ssh pane of a HOST:dir session, since that pane exports both
+SCRIPTS_TMUX_SOCKET and SCRIPTS_TMUX_PANE back to the local tmux server.
+
+Tmux failures are ignored so this is safe to call unconditionally from hooks.`,
+	Args: cobra.RangeArgs(1, 3),
+	Run: func(cmd *cobra.Command, args []string) {
+		verb := args[0]
+		harness := "llm"
+		if len(args) > 1 {
+			harness = args[1]
+		}
+		reason := "input"
+		if len(args) > 2 {
+			reason = args[2]
+		}
+
+		if err := tmux.Notify(verb, harness, reason); err != nil {
+			fmt.Fprintln(os.Stderr, "usage: scripts tmux notify {working|waiting|done|clear} [harness] [reason]")
+			os.Exit(1)
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(tmuxCmd)
 
@@ -775,6 +807,7 @@ func init() {
 	tmuxCmd.AddCommand(configCmd)
 	tmuxCmd.AddCommand(claudeCmd)
 	tmuxCmd.AddCommand(harnessesCmd)
+	tmuxCmd.AddCommand(notifyCmd)
 
 	displayCmd.Flags().Bool("no-switch", false, "Display sessions without switching")
 	harnessesCmd.Flags().Bool("list", false, "Print harness panes without switching")

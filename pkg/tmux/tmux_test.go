@@ -222,7 +222,7 @@ func TestRemotePaneCommand(t *testing.T) {
 	t.Parallel()
 
 	got := remotePaneCommand("h", "/x", "/tmp/sock")
-	want := `sh -c 'sock=/tmp/scripts-tmux-$$.sock; exec ssh -t -R "$sock:"'"'"'/tmp/sock'"'"' h "export SCRIPTS_TMUX_SOCKET=$sock; " '"'"'cd '"'"'"'"'"'"'"'"'/x'"'"'"'"'"'"'"'"' && "$SHELL" -l; rm -f "$SCRIPTS_TMUX_SOCKET"'"'"''`
+	want := `sh -c 'sock=/tmp/scripts-tmux-$$.sock; exec ssh -t -R "$sock:"'"'"'/tmp/sock'"'"' h "export SCRIPTS_TMUX_SOCKET=$sock; export SCRIPTS_TMUX_PANE=$TMUX_PANE; " '"'"'cd '"'"'"'"'"'"'"'"'/x'"'"'"'"'"'"'"'"' && "$SHELL" -l; rm -f "$SCRIPTS_TMUX_SOCKET"'"'"''`
 	if got != want {
 		t.Fatalf("unexpected pane command: %q", got)
 	}
@@ -254,6 +254,117 @@ func TestParseRemoteEnv(t *testing.T) {
 
 	if _, _, ok := parseRemoteEnv("SCRIPTS_REMOTE_HOST=\nSCRIPTS_REMOTE_DIR=/a/b\n"); ok {
 		t.Fatal("expected empty host to be rejected")
+	}
+}
+
+func TestResolveNotifyPane(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		scriptsPane string
+		tmuxPane    string
+		want        string
+	}{
+		{"%3", "%1", "%3"},
+		{"", "%1", "%1"},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		if got := resolveNotifyPane(c.scriptsPane, c.tmuxPane); got != c.want {
+			t.Fatalf("resolveNotifyPane(%q, %q) = %q, want %q", c.scriptsPane, c.tmuxPane, got, c.want)
+		}
+	}
+}
+
+func TestNotifyAway(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		pane   string
+		active string
+		want   bool
+	}{
+		{"%1", "%2", true},
+		{"%1", "%1", false},
+		{"%1", "", false},
+	}
+	for _, c := range cases {
+		if got := notifyAway(c.pane, c.active); got != c.want {
+			t.Fatalf("notifyAway(%q, %q) = %v, want %v", c.pane, c.active, got, c.want)
+		}
+	}
+}
+
+func TestNotifyTitleSymbol(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		verb   string
+		reason string
+		want   string
+	}{
+		{"working", "", "●"},
+		{"waiting", "input", "?"},
+		{"waiting", "permission", "!"},
+		{"done", "", "✓"},
+		{"clear", "", ""},
+	}
+	for _, c := range cases {
+		if got := notifyTitleSymbol(c.verb, c.reason); got != c.want {
+			t.Fatalf("notifyTitleSymbol(%q, %q) = %q, want %q", c.verb, c.reason, got, c.want)
+		}
+	}
+}
+
+func TestNotifyStateString(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		verb   string
+		reason string
+		want   string
+	}{
+		{"working", "", "working"},
+		{"waiting", "input", "waiting-input"},
+		{"waiting", "permission", "waiting-permission"},
+		{"done", "", "done"},
+		{"clear", "", ""},
+	}
+	for _, c := range cases {
+		if got := notifyStateString(c.verb, c.reason); got != c.want {
+			t.Fatalf("notifyStateString(%q, %q) = %q, want %q", c.verb, c.reason, got, c.want)
+		}
+	}
+}
+
+func TestNotifyMessage(t *testing.T) {
+	t.Parallel()
+
+	if got := notifyMessage("waiting", "claude", "permission", "proj"); got != "claude waiting: permission in proj" {
+		t.Fatalf("unexpected waiting message: %q", got)
+	}
+	if got := notifyMessage("done", "claude", "", "proj"); got != "claude done in proj" {
+		t.Fatalf("unexpected done message: %q", got)
+	}
+	if got := notifyMessage("working", "claude", "", "proj"); got != "" {
+		t.Fatalf("expected no message for working, got %q", got)
+	}
+}
+
+func TestNotifyUnknownVerb(t *testing.T) {
+	t.Setenv("SCRIPTS_TMUX_PANE", "%1")
+
+	if err := Notify("bogus", "claude", "input"); err == nil {
+		t.Fatal("expected error for unknown verb")
+	}
+}
+
+func TestNotifyNoOpWithoutPane(t *testing.T) {
+	t.Setenv("SCRIPTS_TMUX_PANE", "")
+	t.Setenv("TMUX_PANE", "")
+
+	if err := Notify("working", "claude", "input"); err != nil {
+		t.Fatalf("expected no error without a pane, got %v", err)
 	}
 }
 

@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bitfield/script"
 	"github.com/cloudbridgeuy/scripts/pkg/logger"
 )
 
 const tmuxSocketEnvVar = "SCRIPTS_TMUX_SOCKET"
+const tmuxPaneEnvVar = "SCRIPTS_TMUX_PANE"
 
 func tmuxSocketArgs(args ...string) []string {
 	if socket := os.Getenv(tmuxSocketEnvVar); socket != "" {
@@ -62,7 +65,7 @@ func remotePaneCommand(host, dir, localSocket string) string {
 	remoteCmd := shellQuote("cd " + shellQuote(dir) + ` && "$SHELL" -l; rm -f "$SCRIPTS_TMUX_SOCKET"`)
 	forward := `"$sock:"` + shellQuote(localSocket)
 	script := `sock=/tmp/scripts-tmux-$$.sock; exec ssh -t -R ` + forward + " " + host +
-		` "export SCRIPTS_TMUX_SOCKET=$sock; " ` + remoteCmd
+		` "export SCRIPTS_TMUX_SOCKET=$sock; export SCRIPTS_TMUX_PANE=$TMUX_PANE; " ` + remoteCmd
 	return "sh -c " + shellQuote(script)
 }
 
@@ -354,6 +357,134 @@ func SelectWindow(name string) error {
 	logger.Infof("Selecting window %s", name)
 	logger.Debugf("tmux select-window -t %s", name)
 	return runTmux("select-window", "-t", name)
+}
+
+func resolveNotifyPane(scriptsPane, tmuxPane string) string {
+	if scriptsPane != "" {
+		return scriptsPane
+	}
+	return tmuxPane
+}
+
+func notifyAway(pane, active string) bool {
+	return active != "" && active != pane
+}
+
+func notifyTitleSymbol(verb, reason string) string {
+	switch verb {
+	case "working":
+		return "●"
+	case "waiting":
+		if reason == "permission" {
+			return "!"
+		}
+		return "?"
+	case "done":
+		return "✓"
+	default:
+		return ""
+	}
+}
+
+func notifyStateString(verb, reason string) string {
+	switch verb {
+	case "working":
+		return "working"
+	case "waiting":
+		return "waiting-" + reason
+	case "done":
+		return "done"
+	default:
+		return ""
+	}
+}
+
+func notifyMessage(verb, harness, reason, session string) string {
+	switch verb {
+	case "waiting":
+		return fmt.Sprintf("%s waiting: %s in %s", harness, reason, session)
+	case "done":
+		return fmt.Sprintf("%s done in %s", harness, session)
+	default:
+		return ""
+	}
+}
+
+func notifySetTitle(pane, title string) {
+	_ = runTmux("select-pane", "-t", pane, "-T", title)
+	_ = runTmux("set-window-option", "-t", pane, "monitor-activity", "on")
+}
+
+func notifySetState(pane, harness, state string) {
+	_ = runTmux("set", "-p", "-t", pane, "@harness", harness)
+	_ = runTmux("set", "-p", "-t", pane, "@harness_state", state)
+	_ = runTmux("set", "-p", "-t", pane, "@harness_updated", strconv.FormatInt(time.Now().Unix(), 10))
+}
+
+func notifyClearState(pane string) {
+	_ = runTmux("select-pane", "-t", pane, "-T", "")
+	_ = runTmux("set", "-p", "-t", pane, "-u", "@harness")
+	_ = runTmux("set", "-p", "-t", pane, "-u", "@harness_state")
+	_ = runTmux("set", "-p", "-t", pane, "-u", "@harness_updated")
+}
+
+func notifySessionName(pane string) string {
+	session, _ := runTmuxOutput("display-message", "-p", "-t", pane, "#{session_name}")
+	return session
+}
+
+func notifyActivePane() string {
+	active, _ := runTmuxOutput("display-message", "-p", "#{pane_id}")
+	return active
+}
+
+func notifyStore(message, harness, session, pane string) {
+	notifyScript := os.Getenv("NOTIFY_SCRIPT")
+	if notifyScript == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		notifyScript = home + "/.local/bin/tmux-notifications.sh"
+	}
+	_ = exec.Command(notifyScript, "-n", message, harness, session, pane).Run()
+}
+
+func Notify(verb, harness, reason string) error {
+	switch verb {
+	case "working", "waiting", "done", "clear":
+	default:
+		return fmt.Errorf("unknown verb: %s", verb)
+	}
+
+	if harness == "" {
+		harness = "llm"
+	}
+	if reason == "" {
+		reason = "input"
+	}
+
+	pane := resolveNotifyPane(os.Getenv(tmuxPaneEnvVar), os.Getenv("TMUX_PANE"))
+	if pane == "" {
+		return nil
+	}
+
+	if verb == "clear" {
+		notifyClearState(pane)
+		return nil
+	}
+
+	notifySetTitle(pane, harness+" "+notifyTitleSymbol(verb, reason))
+	notifySetState(pane, harness, notifyStateString(verb, reason))
+
+	if verb == "waiting" || verb == "done" {
+		if notifyAway(pane, notifyActivePane()) {
+			session := notifySessionName(pane)
+			notifyStore(notifyMessage(verb, harness, reason, session), harness, session, pane)
+		}
+	}
+
+	return nil
 }
 
 type HarnessPane struct {
