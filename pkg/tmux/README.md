@@ -6,7 +6,7 @@ Tmux session and window management primitives. Wraps the `tmux` CLI directly via
 
 - `Switch(name string) error` — switches to `name`, creating the session if it doesn't exist. Inside tmux uses `switch-client`; outside it uses `attach`.
 - `SwitchExisting(name string) error` — switches without creating; used by prev/next rotation through history.
-- `NewSession(name string) error` — creates a detached session with `-c <name>` (working directory set to the session name).
+- `NewSession(name string) error` — creates a detached session. Local: `-c <name>` (working directory set to the session name). Qualified `HOST:dir`: starts at the local home with the ssh pane command and records the remote markers.
 - `KillSession(name string) error` — terminates the session.
 - `HasSession(name string) error` — returns nil if the session exists, error otherwise.
 - `SessionExists(name string) (bool, error)` — same check, surfaced as a boolean.
@@ -14,6 +14,8 @@ Tmux session and window management primitives. Wraps the `tmux` CLI directly via
 - `Attach(name string) error` / `SwitchClient(name string) error` — direct primitives behind `Switch`.
 - `DisplaySessions() (string, error)` — fzf picker over sessions with pane-capture preview.
 - `GetCurrentSession() (string, error)` — current session name (uses `$TMUX_PANE` / `display-message`).
+- `ParseTarget(arg string) (host, session string)` — splits the `HOST:session` argument form; `HistoryName(host, session string) string` joins it for storage.
+- `RemoteInfo(name string) (host, dir string, ok bool)` — reads the session's `SCRIPTS_REMOTE_HOST` / `SCRIPTS_REMOTE_DIR` markers, mapping a live session name back to its qualified `HOST:dir` form.
 
 ## Harness API
 
@@ -33,7 +35,17 @@ Tmux session and window management primitives. Wraps the `tmux` CLI directly via
 
 ## Session Name Canonicalisation
 
-Sessions are named after directory paths. Dots in directory names conflict with tmux's target-pattern syntax (`session:window.pane`), so `canonicalSessionName()` replaces `.` with `_` before any tmux call. Callers pass real paths; the canonicalisation happens inside the package.
+Sessions are named after directory paths. Dots in directory names conflict with tmux's target-pattern syntax (`session:window.pane`), so `CanonicalSessionName()` replaces `.` with `_` before any tmux call. Callers pass real paths; the canonicalisation happens inside the package.
+
+## Remote Targets
+
+- A remote session is addressed as a qualified `HOST:session` argument (e.g. `web1:/a/b`). Host names are `~/.ssh/config` aliases typed by the user; there are no new config keys.
+- It is a LOCAL tmux session whose panes run `ssh` — remote machines need only ssh, no tmux. The pane command is `ssh -t host 'cd dir && exec "$SHELL" -l'`.
+- tmux silently maps `:` to `_` in session names at creation, so `CanonicalSessionName()` mirrors that (`:` and `.` → `_`) and runs before every tmux `-t`/`-s` call: a `HOST:dir` argument targets the stored `HOST_dir` session.
+- `NewSession` also sets the session-scoped `default-command` to the same ssh pane command, so `Ctrl-b c`, `Ctrl-b %`, and `Ctrl-b "` open new ssh panes in that session.
+- `SCRIPTS_REMOTE_HOST` / `SCRIPTS_REMOTE_DIR` session environment markers record the target; `RemoteInfo` reads them back to map a live session name to `HOST:session`.
+- `sync` maps live sessions through those markers before writing history; `--reverse` compares names canonically and recreates missing sessions from their qualified history entries.
+- Every tmux call stays local; no remote tmux is involved. A remote directory picker is not implemented yet.
 
 ## Switch-then-Persist Pattern
 

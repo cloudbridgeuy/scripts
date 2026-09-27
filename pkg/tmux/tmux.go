@@ -11,6 +11,41 @@ import (
 	"github.com/cloudbridgeuy/scripts/pkg/logger"
 )
 
+func ParseTarget(arg string) (host, session string) {
+	i := strings.Index(arg, ":")
+	if i <= 0 {
+		return "", arg
+	}
+	host = arg[:i]
+	if strings.Contains(host, "/") {
+		return "", arg
+	}
+	return host, arg[i+1:]
+}
+
+func HistoryName(host, session string) string {
+	if host == "" {
+		return session
+	}
+	return host + ":" + session
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = shellQuote(arg)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func remotePaneCommand(host, dir string) string {
+	return "ssh -t " + host + " " + shellQuote("cd "+shellQuote(dir)+` && exec "$SHELL" -l`)
+}
+
 func runTmux(args ...string) error {
 	cmd := exec.Command("tmux", args...)
 	output, err := cmd.CombinedOutput()
@@ -65,11 +100,11 @@ func isNoServerRunning(err error) bool {
 	return strings.Contains(err.Error(), "no server running")
 }
 
-func canonicalSessionName(name string) string {
-	return strings.ReplaceAll(name, ".", "_")
+func CanonicalSessionName(name string) string {
+	name = strings.ReplaceAll(name, ".", "_")
+	return strings.ReplaceAll(name, ":", "_")
 }
 
-// ListSessions returns a list of all the running Tmux sessions
 func ListSessions() ([]string, error) {
 	logger.Infof("Listing all tmux sessions")
 	logger.Debugf("tmux ls -F #{session_name}")
@@ -84,11 +119,8 @@ func ListSessions() ([]string, error) {
 	return parseNonEmptyLines(text), nil
 }
 
-// Switch ensures that you create/switch/attach to a new session by name.
-//
-// The value of `name` is supposed to be a directory path.
 func Switch(name string) error {
-	canonical := canonicalSessionName(name)
+	canonical := CanonicalSessionName(name)
 
 	currentSession, err := GetCurrentSession()
 	if err == nil && canonical == currentSession {
@@ -105,9 +137,8 @@ func Switch(name string) error {
 	return switchToCanonicalSession(canonical)
 }
 
-// SwitchExisting switches to an existing session without creating it.
 func SwitchExisting(name string) error {
-	canonical := canonicalSessionName(name)
+	canonical := CanonicalSessionName(name)
 
 	currentSession, err := GetCurrentSession()
 	if err == nil && canonical == currentSession {
@@ -123,7 +154,6 @@ func SwitchExisting(name string) error {
 }
 
 func switchToCanonicalSession(canonical string) error {
-
 	if err := SwitchClient(canonical); err == nil {
 		return nil
 	}
@@ -131,19 +161,12 @@ func switchToCanonicalSession(canonical string) error {
 	return Attach(canonical)
 }
 
-// SwitchClient switches the client to the given session.
 func SwitchClient(name string) error {
 	logger.Infof("Switching to session %s", name)
 	logger.Debugf("tmux switch-client -t %s", name)
 	return runTmux("switch-client", "-t", name)
 }
 
-// Attach attaches the current tmux instance to the given session.
-//
-// NOTE:
-// We can't use the `scripts` package because (for some unknown reason to me)
-// tmux` requires that we bind `stdout`, `stderr`, and `stdin` to the spawned
-// process for it to work.
 func Attach(name string) error {
 	logger.Infof("Attaching to session %s", name)
 	logger.Debugf("tmux attach -t %s", name)
@@ -154,18 +177,35 @@ func Attach(name string) error {
 	return cmd.Run()
 }
 
-// NewSession creates a new tmux session.
 func NewSession(name string) error {
-	canonical := canonicalSessionName(name)
+	canonical := CanonicalSessionName(name)
+
+	if host, dir := ParseTarget(name); host != "" {
+		paneCmd := remotePaneCommand(host, dir)
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		logger.Infof("Creating remote session %s", name)
+		if err := runTmux("new-session", "-d", "-s", canonical, "-c", home, paneCmd); err != nil {
+			return err
+		}
+		if err := runTmux("set-option", "-w", "-t", canonical, "default-command", paneCmd); err != nil {
+			return err
+		}
+		if err := runTmux("set-environment", "-t", canonical, "SCRIPTS_REMOTE_HOST", host); err != nil {
+			return err
+		}
+		return runTmux("set-environment", "-t", canonical, "SCRIPTS_REMOTE_DIR", dir)
+	}
 
 	logger.Infof("Creating new session %s", name)
 	logger.Debugf("tmux new-session -s %s -c %s -d", canonical, name)
 	return runTmux("new-session", "-s", canonical, "-c", name, "-d")
 }
 
-// KillSessions kills a session.
 func KillSession(name string) error {
-	canonical := canonicalSessionName(name)
+	canonical := CanonicalSessionName(name)
 
 	logger.Infof("Killing session %s", name)
 	if err := HasSession(canonical); err == nil {
@@ -175,16 +215,14 @@ func KillSession(name string) error {
 	return nil
 }
 
-// HasSession checks if the given session exists.
 func HasSession(name string) error {
-	canonical := canonicalSessionName(name)
+	canonical := CanonicalSessionName(name)
 
 	logger.Infof("Checking if session %s exists", name)
 	logger.Debugf("tmux has-session -t %s", canonical)
 	return runTmux("has-session", "-t", canonical)
 }
 
-// SessionExists returns whether a session exists.
 func SessionExists(name string) (bool, error) {
 	err := HasSession(name)
 	if err == nil {
@@ -198,7 +236,35 @@ func SessionExists(name string) (bool, error) {
 	return false, err
 }
 
-// DisplaySessions dynamically renders all the current active sessions and allows you to traverse to them.
+func parseRemoteEnv(output string) (string, string, bool) {
+	var host, dir string
+	var hasHost, hasDir bool
+
+	for _, line := range strings.Split(output, "\n") {
+		if value, found := strings.CutPrefix(line, "SCRIPTS_REMOTE_HOST="); found {
+			host, hasHost = value, true
+		}
+		if value, found := strings.CutPrefix(line, "SCRIPTS_REMOTE_DIR="); found {
+			dir, hasDir = value, true
+		}
+	}
+
+	if !hasHost || !hasDir || host == "" {
+		return "", "", false
+	}
+
+	return host, dir, true
+}
+
+func RemoteInfo(session string) (string, string, bool) {
+	output, err := runTmuxOutput("show-environment", "-t", CanonicalSessionName(session))
+	if err != nil {
+		return "", "", false
+	}
+
+	return parseRemoteEnv(output)
+}
+
 func DisplaySessions() (string, error) {
 	fzfCmd := fmt.Sprintf(`fzf \
       --header 'Press CTRL-X to delete a session.' \
@@ -215,7 +281,6 @@ func DisplaySessions() (string, error) {
 	return strings.TrimSpace(buf), err
 }
 
-// Ls returns a list of `tmux` running sessions.
 func Ls() ([]string, error) {
 	result, err := runTmuxOutput("ls", "-F", "#{session_name}")
 	if err != nil {
@@ -228,7 +293,6 @@ func Ls() ([]string, error) {
 	return parseNonEmptyLines(result), nil
 }
 
-// GetCurrentSession returns the name of the current tmux session.
 func GetCurrentSession() (string, error) {
 	session, err := runTmuxOutput("display-message", "-p", "#S")
 	if err != nil {
@@ -237,7 +301,6 @@ func GetCurrentSession() (string, error) {
 	return session, nil
 }
 
-// ListWindows returns a list of window IDs in the current session.
 func ListWindows() ([]string, error) {
 	result, err := runTmuxOutput("list-windows", "-F", "#{window_id}")
 	if err != nil {
@@ -247,21 +310,18 @@ func ListWindows() ([]string, error) {
 	return parseNonEmptyLines(result), nil
 }
 
-// NewWindow creates a new window with the given name, command, and directory.
 func NewWindow(name, command, directory string) error {
 	logger.Infof("Creating new window %s", name)
 	logger.Debugf("tmux new-window -n %s -c %s %s", name, directory, command)
 	return runTmux("new-window", "-n", name, "-c", directory, command)
 }
 
-// KillWindow kills a window by its ID.
 func KillWindow(windowID string) error {
 	logger.Infof("Killing window %s", windowID)
 	logger.Debugf("tmux kill-window -t %s", windowID)
 	return runTmux("kill-window", "-t", windowID)
 }
 
-// SelectWindow selects (focuses) a window by name.
 func SelectWindow(name string) error {
 	logger.Infof("Selecting window %s", name)
 	logger.Debugf("tmux select-window -t %s", name)

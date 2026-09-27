@@ -19,8 +19,17 @@ func TestParseNonEmptyLines(t *testing.T) {
 func TestCanonicalSessionName(t *testing.T) {
 	t.Parallel()
 
-	if got := canonicalSessionName("/tmp/opencode.test"); got != "/tmp/opencode_test" {
-		t.Fatalf("unexpected canonical name: %q", got)
+	cases := map[string]string{
+		"/tmp/opencode.test": "/tmp/opencode_test",
+		"web1:/a/b":          "web1_/a/b",
+		"web1:/tmp/a.b":      "web1_/tmp/a_b",
+		"/a/b:c":             "/a/b_c",
+	}
+
+	for input, expected := range cases {
+		if got := CanonicalSessionName(input); got != expected {
+			t.Fatalf("CanonicalSessionName(%q) = %q, want %q", input, got, expected)
+		}
 	}
 }
 
@@ -155,5 +164,88 @@ func TestParseHarnessFieldsLiveCommandOverridesStoredOpts(t *testing.T) {
 	}
 	if IsStaleHarness(p) {
 		t.Fatal("expected overridden pane to be kept")
+	}
+}
+
+func TestParseTarget(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		arg     string
+		host    string
+		session string
+	}{
+		{"/a/b", "", "/a/b"},
+		{"web1:/a/b", "web1", "/a/b"},
+		{"web1:foo", "web1", "foo"},
+		{"/a/b:c", "", "/a/b:c"},
+		{"web1:", "web1", ""},
+		{":x", "", ":x"},
+		{"my:session", "my", "session"},
+	}
+
+	for _, c := range cases {
+		host, session := ParseTarget(c.arg)
+		if host != c.host || session != c.session {
+			t.Fatalf("ParseTarget(%q) = (%q, %q), want (%q, %q)", c.arg, host, session, c.host, c.session)
+		}
+	}
+}
+
+func TestHistoryName(t *testing.T) {
+	t.Parallel()
+
+	if got := HistoryName("", "/a/b"); got != "/a/b" {
+		t.Fatalf("unexpected local history name: %q", got)
+	}
+	if got := HistoryName("web1", "/a/b"); got != "web1:/a/b" {
+		t.Fatalf("unexpected remote history name: %q", got)
+	}
+}
+
+func TestShellQuoteAndJoin(t *testing.T) {
+	t.Parallel()
+
+	if got := shellQuote("a b"); got != "'a b'" {
+		t.Fatalf("unexpected quote: %q", got)
+	}
+	if got := shellQuote("it's"); got != `'it'"'"'s'` {
+		t.Fatalf("unexpected quote with apostrophe: %q", got)
+	}
+	if got := shellJoin([]string{"tmux", "ls", "-F", "a b"}); got != `'tmux' 'ls' '-F' 'a b'` {
+		t.Fatalf("unexpected join: %q", got)
+	}
+}
+
+func TestRemotePaneCommand(t *testing.T) {
+	t.Parallel()
+
+	if got := remotePaneCommand("h", "/x"); got != `ssh -t h 'cd '"'"'/x'"'"' && exec "$SHELL" -l'` {
+		t.Fatalf("unexpected pane command: %q", got)
+	}
+}
+
+func TestParseRemoteEnv(t *testing.T) {
+	t.Parallel()
+
+	host, dir, ok := parseRemoteEnv("SCRIPTS_REMOTE_HOST=web1\nSCRIPTS_REMOTE_DIR=/a/b\n")
+	if !ok || host != "web1" || dir != "/a/b" {
+		t.Fatalf("unexpected remote env: (%q, %q, %v)", host, dir, ok)
+	}
+
+	if _, _, ok := parseRemoteEnv("SCRIPTS_REMOTE_HOST=web1\n"); ok {
+		t.Fatal("expected missing dir to be rejected")
+	}
+
+	if _, _, ok := parseRemoteEnv("SCRIPTS_REMOTE_DIR=/a/b\n"); ok {
+		t.Fatal("expected missing host to be rejected")
+	}
+
+	if _, _, ok := parseRemoteEnv(""); ok {
+		t.Fatal("expected empty output to be rejected")
+	}
+
+	if _, _, ok := parseRemoteEnv("SCRIPTS_REMOTE_HOST=\nSCRIPTS_REMOTE_DIR=/a/b\n"); ok {
+		t.Fatal("expected empty host to be rejected")
 	}
 }

@@ -94,17 +94,17 @@ func reverseSyncPlan(history []string, sessions []string) (toCreate []string, to
 	inHistory := make(map[string]bool, len(history))
 	inTmux := make(map[string]bool, len(sessions))
 
-	for _, session := range history {
-		inHistory[session] = true
-	}
-
 	for _, session := range sessions {
 		inTmux[session] = true
 	}
 
-	for _, session := range history {
-		if !inTmux[session] {
-			toCreate = append(toCreate, session)
+	for _, entry := range history {
+		inHistory[tmux.CanonicalSessionName(entry)] = true
+	}
+
+	for _, entry := range history {
+		if !inTmux[tmux.CanonicalSessionName(entry)] {
+			toCreate = append(toCreate, entry)
 		}
 	}
 
@@ -115,6 +115,28 @@ func reverseSyncPlan(history []string, sessions []string) (toCreate []string, to
 	}
 
 	return toCreate, toKill
+}
+
+func qualifyPicked(name string) string {
+	host, dir, ok := tmux.RemoteInfo(name)
+	if !ok {
+		return name
+	}
+	return tmux.HistoryName(host, dir)
+}
+
+func qualifySessions(sessions []string) []string {
+	qualified := make([]string, 0, len(sessions))
+
+	for _, name := range sessions {
+		if strings.HasPrefix(name, "/") {
+			qualified = append(qualified, name)
+			continue
+		}
+		qualified = append(qualified, qualifyPicked(name))
+	}
+
+	return qualified
 }
 
 func lastSession(sessions []string) (string, bool) {
@@ -174,10 +196,10 @@ func switchWithRotation(history []string, rotate func([]string) []string) ([]str
 
 	for attempts := 0; attempts < len(available); attempts++ {
 		rotated = rotate(rotated)
-		session := rotated[len(rotated)-1]
+		entry := rotated[len(rotated)-1]
 
-		if err := tmux.SwitchExisting(session); err == nil {
-			return rotated, session, nil
+		if err := tmux.SwitchExisting(entry); err == nil {
+			return rotated, entry, nil
 		} else {
 			lastErr = err
 		}
@@ -351,7 +373,8 @@ projects, keeping all the required configuration namespaced inside.`,
 var displayCmd = &cobra.Command{
 	Use:   "display [OPTIONS]",
 	Short: "Display all the running tmux sessions",
-	Long:  `You can use this command to traverse to a different session.`,
+	Long: `You can use this command to traverse to a different session.
+A picked session may be HOST:session: a remote session is a local tmux session with ssh panes.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		noSwitch, err := cmd.Flags().GetBool("no-switch")
 		if err != nil {
@@ -368,6 +391,8 @@ var displayCmd = &cobra.Command{
 		if noSwitch {
 			return
 		}
+
+		session = qualifyPicked(session)
 
 		if err = tmux.Switch(session); err != nil {
 			errors.HandleErrorWithReason(err, fmt.Sprintf("can't switch to session %s", session))
@@ -429,14 +454,15 @@ sessions will be opened and closed from 'tmux' until both lists match.`,
 			}
 		}
 
-		setTmuxHistory(sessions)
+		qualified := qualifySessions(sessions)
+		setTmuxHistory(qualified)
 
 		if err := saveConfig(); err != nil {
 			errors.HandleErrorWithReason(err, "can't save the config file")
 			return
 		}
 
-		session, ok := lastSession(sessions)
+		session, ok := lastSession(qualified)
 		if !ok {
 			return
 		}
@@ -531,8 +557,9 @@ use this command plus the 'prev' command to move between them.`,
 var addCmd = &cobra.Command{
 	Use:   "add SESSION",
 	Short: "Add a new session.",
-	Long:  "Creates a new tmux sessions and transitions to it.",
-	Args:  cobra.ExactArgs(1),
+	Long: `Creates a new tmux sessions and transitions to it.
+SESSION may be HOST:session: a remote session is a local tmux session with ssh panes.`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		session := args[0]
 
@@ -554,8 +581,9 @@ var addCmd = &cobra.Command{
 var removeCmd = &cobra.Command{
 	Use:   "remove SESSION",
 	Short: "Removes an existing session.",
-	Long:  "Creates a new tmux sessions and transitions to it.",
-	Args:  cobra.ExactArgs(1),
+	Long: `Removes an existing tmux session.
+SESSION may be HOST:session: a remote session is a local tmux session with ssh panes.`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		session := args[0]
 
@@ -591,7 +619,8 @@ var goCmd = &cobra.Command{
 	Use:   "go [SESSION]",
 	Short: "Go to the provided session or pick one from those available.",
 	Long: `You can either provide a full path to open a new session or leave the
-SESSION argument empty to display the list of running sessions to pick one.`,
+SESSION argument empty to display the list of running sessions to pick one.
+SESSION may be HOST:session: a remote session is a local tmux session with ssh panes.`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		var session string
@@ -605,6 +634,7 @@ SESSION argument empty to display the list of running sessions to pick one.`,
 				errors.HandleErrorWithReason(err, "can't display tmux sessions")
 				return
 			}
+			session = qualifyPicked(session)
 		}
 
 		logger.Debugf("Updating config file with session: %s", session)

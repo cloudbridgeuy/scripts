@@ -8,12 +8,12 @@ import (
 func TestReverseSyncPlan(t *testing.T) {
 	t.Parallel()
 
-	history := []string{"/a", "/b", "/c"}
-	sessions := []string{"/b", "/d"}
+	history := []string{"/a", "web1:/a/b", "/b.c", "/c", "web2:/x"}
+	sessions := []string{"/a", "web1_/a/b", "/b_c", "/d"}
 
 	toCreate, toKill := reverseSyncPlan(history, sessions)
 
-	if !reflect.DeepEqual(toCreate, []string{"/a", "/c"}) {
+	if !reflect.DeepEqual(toCreate, []string{"/c", "web2:/x"}) {
 		t.Fatalf("unexpected toCreate: %#v", toCreate)
 	}
 
